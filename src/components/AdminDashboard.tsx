@@ -29,6 +29,30 @@ import {
 } from "lucide-react";
 
 import { Playlist, Video, Book, Test, StudentProfile, PaymentRequest } from "../types";
+import {
+  getPlaylists,
+  getBooks,
+  getTests,
+  getStudents,
+  getPaymentRequests,
+  updateStudentStatus,
+  deleteStudent,
+  createPlaylistInDb,
+  updatePlaylistInDb,
+  deletePlaylistFromDb,
+  createVideo,
+  updateVideo,
+  deleteVideo,
+  createBookInDb,
+  updateBookInDb,
+  deleteBookFromDb,
+  createTestInDb,
+  updateTestInDb,
+  deleteTestFromDb,
+  approvePayment as approvePaymentInFirestore,
+  rejectPayment as rejectPaymentInFirestore,
+  deletePaymentRequest
+} from "../lib/firebase";
 
 interface AdminDashboardProps {
   email: string;
@@ -87,25 +111,11 @@ export default function AdminDashboard({ email, onLogout }: AdminDashboardProps)
       reader.onloadend = async () => {
         try {
           const base64Data = reader.result as string;
-          const res = await fetch("/api/upload", {
-            method: "POST",
-            headers: getHeaders(),
-            body: JSON.stringify({
-              filename: file.name,
-              base64Data
-            })
-          });
-          
-          const data = await res.json();
-          if (!res.ok) {
-            throw new Error(data.error || "Upload failed.");
-          }
-          
           if (field === "thumbnail") {
-            setPlaylistForm((prev) => ({ ...prev, thumbnail: data.url }));
+            setPlaylistForm((prev) => ({ ...prev, thumbnail: base64Data }));
             showFeedback("Thumbnail uploaded and updated!");
           } else {
-            setVideoForm((prev) => ({ ...prev, videoUrl: data.url }));
+            setVideoForm((prev) => ({ ...prev, videoUrl: base64Data }));
             showFeedback("Video file uploaded and updated!");
           }
         } catch (err: any) {
@@ -159,26 +169,13 @@ export default function AdminDashboard({ email, onLogout }: AdminDashboardProps)
     setLoading(true);
     setErrorMsg("");
     try {
-      const [resPlaylists, resBooks, resTests, resStudents, resPayments] = await Promise.all([
-        fetch("/api/videos"),
-        fetch("/api/books"),
-        fetch("/api/tests"),
-        fetch("/api/students", { headers: getHeaders() }),
-        fetch("/api/admin/payments", { headers: getHeaders() })
+      const [dPlaylists, dBooks, dTests, dStudents, dPayments] = await Promise.all([
+        getPlaylists("surajeductionofficial@gmail.com"),
+        getBooks(),
+        getTests(),
+        getStudents(),
+        getPaymentRequests()
       ]);
-
-      if (!resPlaylists.ok || !resBooks.ok || !resTests.ok || !resStudents.ok) {
-        throw new Error("Failed to sync some administrative data tables.");
-      }
-
-      const dPlaylists = await resPlaylists.json();
-      const dBooks = await resBooks.json();
-      const dTests = await resTests.json();
-      const dStudents = await resStudents.json();
-      let dPayments = [];
-      if (resPayments.ok) {
-        dPayments = await resPayments.json();
-      }
 
       setPlaylists(dPlaylists);
       setBooks(dBooks);
@@ -186,7 +183,7 @@ export default function AdminDashboard({ email, onLogout }: AdminDashboardProps)
       setStudents(dStudents);
       setPayments(dPayments);
     } catch (err: any) {
-      setErrorMsg(err.message || "Failed to contact Express endpoint services.");
+      setErrorMsg(err.message || "Failed to contact Firestore database.");
     } finally {
       setLoading(false);
     }
@@ -204,18 +201,7 @@ export default function AdminDashboard({ email, onLogout }: AdminDashboardProps)
 
   const handleToggleStudentStatus = async (studentEmail: string, currentStatus: boolean) => {
     try {
-      const res = await fetch(`/api/admin/students/${encodeURIComponent(studentEmail)}/status`, {
-        method: "PUT",
-        headers: {
-          "Content-Type": "application/json",
-          ...getHeaders()
-        },
-        body: JSON.stringify({ isActive: !currentStatus })
-      });
-      const data = await res.json();
-      if (!res.ok) {
-        throw new Error(data.error || "Failed to update student status.");
-      }
+      await updateStudentStatus(studentEmail, !currentStatus);
       showFeedback(`Student status successfully changed to ${!currentStatus ? 'Active' : 'Inactive'}.`);
       await fetchAllData();
     } catch (err: any) {
@@ -228,14 +214,7 @@ export default function AdminDashboard({ email, onLogout }: AdminDashboardProps)
       return;
     }
     try {
-      const res = await fetch(`/api/admin/students/${encodeURIComponent(studentEmail)}`, {
-        method: "DELETE",
-        headers: getHeaders()
-      });
-      const data = await res.json();
-      if (!res.ok) {
-        throw new Error(data.error || "Failed to delete student record.");
-      }
+      await deleteStudent(studentEmail);
       showFeedback("Student record deleted successfully.");
       await fetchAllData();
     } catch (err: any) {
@@ -271,21 +250,13 @@ export default function AdminDashboard({ email, onLogout }: AdminDashboardProps)
     e.preventDefault();
     setSyncing(true);
     try {
-      const url = editingPlaylist ? `/api/playlists/${editingPlaylist.id}` : "/api/playlists";
-      const method = editingPlaylist ? "PUT" : "POST";
-
-      const res = await fetch(url, {
-        method,
-        headers: getHeaders(),
-        body: JSON.stringify(playlistForm)
-      });
-
-      if (!res.ok) {
-        const data = await res.json();
-        throw new Error(data.error || "Playlist compilation failed.");
+      if (editingPlaylist) {
+        await updatePlaylistInDb(editingPlaylist.id, playlistForm);
+        showFeedback("Course Playlist metadata updated!");
+      } else {
+        await createPlaylistInDb(playlistForm);
+        showFeedback("New learning playlist added successfully!");
       }
-
-      showFeedback(editingPlaylist ? "Course Playlist metadata updated!" : "New learning playlist added successfully!");
       setPlaylistModalOpen(false);
       await fetchAllData();
     } catch (err: any) {
@@ -299,11 +270,7 @@ export default function AdminDashboard({ email, onLogout }: AdminDashboardProps)
     if (!window.confirm("Are you absolutely sure you want to delete this playlist? This deletes all associated video lectures as well.")) return;
     setSyncing(true);
     try {
-      const res = await fetch(`/api/playlists/${id}`, {
-        method: "DELETE",
-        headers: getHeaders()
-      });
-      if (!res.ok) throw new Error("Delete operation refused by server.");
+      await deletePlaylistFromDb(id);
       showFeedback("Syllabus Playlist purged successfully.");
       await fetchAllData();
     } catch (err: any) {
@@ -346,20 +313,13 @@ export default function AdminDashboard({ email, onLogout }: AdminDashboardProps)
     setSyncing(true);
 
     try {
-      const url = editingVideo 
-        ? `/api/playlists/${selectedPlaylistForVideos.id}/videos/${editingVideo.id}` 
-        : `/api/playlists/${selectedPlaylistForVideos.id}/videos`;
-      const method = editingVideo ? "PUT" : "POST";
-
-      const res = await fetch(url, {
-        method,
-        headers: getHeaders(),
-        body: JSON.stringify(videoForm)
-      });
-
-      if (!res.ok) throw new Error("Failed to compile video details.");
-
-      showFeedback(editingVideo ? "Lecture video details updated!" : "New lecture video appended to syllabus!");
+      if (editingVideo) {
+        await updateVideo(selectedPlaylistForVideos.id, editingVideo.id, videoForm);
+        showFeedback("Lecture video details updated!");
+      } else {
+        await createVideo(selectedPlaylistForVideos.id, videoForm);
+        showFeedback("New lecture video appended to syllabus!");
+      }
       setVideoModalOpen(false);
       await fetchAllData();
     } catch (err: any) {
@@ -373,11 +333,7 @@ export default function AdminDashboard({ email, onLogout }: AdminDashboardProps)
     if (!window.confirm("Purge this video from playlist?")) return;
     setSyncing(true);
     try {
-      const res = await fetch(`/api/playlists/${playlistId}/videos/${videoId}`, {
-        method: "DELETE",
-        headers: getHeaders()
-      });
-      if (!res.ok) throw new Error("Server refused deletion request.");
+      await deleteVideo(playlistId, videoId);
       showFeedback("Lecture video removed.");
       await fetchAllData();
     } catch (err: any) {
@@ -417,18 +373,13 @@ export default function AdminDashboard({ email, onLogout }: AdminDashboardProps)
     e.preventDefault();
     setSyncing(true);
     try {
-      const url = editingBook ? `/api/books/${editingBook.id}` : "/api/books";
-      const method = editingBook ? "PUT" : "POST";
-
-      const res = await fetch(url, {
-        method,
-        headers: getHeaders(),
-        body: JSON.stringify(bookForm)
-      });
-
-      if (!res.ok) throw new Error("Failed to persist book data.");
-
-      showFeedback(editingBook ? "Reference book credentials updated!" : "New study reference book added to repository!");
+      if (editingBook) {
+        await updateBookInDb(editingBook.id, bookForm);
+        showFeedback("Reference book credentials updated!");
+      } else {
+        await createBookInDb(bookForm);
+        showFeedback("New study reference book added to repository!");
+      }
       setBookModalOpen(false);
       await fetchAllData();
     } catch (err: any) {
@@ -442,11 +393,7 @@ export default function AdminDashboard({ email, onLogout }: AdminDashboardProps)
     if (!window.confirm("Purge this reference book from catalog database?")) return;
     setSyncing(true);
     try {
-      const res = await fetch(`/api/books/${id}`, {
-        method: "DELETE",
-        headers: getHeaders()
-      });
-      if (!res.ok) throw new Error("Could not delete book from system.");
+      await deleteBookFromDb(id);
       showFeedback("Book successfully uncatalogued.");
       await fetchAllData();
     } catch (err: any) {
@@ -532,18 +479,13 @@ export default function AdminDashboard({ email, onLogout }: AdminDashboardProps)
     setSyncing(true);
 
     try {
-      const url = editingTest ? `/api/tests/${editingTest.id}` : "/api/tests";
-      const method = editingTest ? "PUT" : "POST";
-
-      const res = await fetch(url, {
-        method,
-        headers: getHeaders(),
-        body: JSON.stringify(testForm)
-      });
-
-      if (!res.ok) throw new Error("Could not publish test.");
-
-      showFeedback(editingTest ? "Mock Test Paper updated successfully!" : "New competitive Mock Test Paper published!");
+      if (editingTest) {
+        await updateTestInDb(editingTest.id, testForm);
+        showFeedback("Mock Test Paper updated successfully!");
+      } else {
+        await createTestInDb(testForm);
+        showFeedback("New competitive Mock Test Paper published!");
+      }
       setTestModalOpen(false);
       await fetchAllData();
     } catch (err: any) {
@@ -557,11 +499,7 @@ export default function AdminDashboard({ email, onLogout }: AdminDashboardProps)
     if (!window.confirm("Purge this exam sheet entirely from dynamic mocks?")) return;
     setSyncing(true);
     try {
-      const res = await fetch(`/api/tests/${id}`, {
-        method: "DELETE",
-        headers: getHeaders()
-      });
-      if (!res.ok) throw new Error("Purge request failed.");
+      await deleteTestFromDb(id);
       showFeedback("Mock test paper successfully deleted.");
       await fetchAllData();
     } catch (err: any) {
@@ -574,13 +512,7 @@ export default function AdminDashboard({ email, onLogout }: AdminDashboardProps)
   const handleTestPublishToggle = async (tst: Test) => {
     setSyncing(true);
     try {
-      // For simplicity, we toggle a "published" boolean if we want, or do metadata edit
-      const res = await fetch(`/api/tests/${tst.id}`, {
-        method: "PUT",
-        headers: getHeaders(),
-        body: JSON.stringify({ ...tst, published: !(tst as any).published })
-      });
-      if (!res.ok) throw new Error("Publish state toggle failed.");
+      await updateTestInDb(tst.id, { ...tst, published: !(tst as any).published });
       showFeedback("Mock Test availability status altered.");
       await fetchAllData();
     } catch (err: any) {
@@ -597,14 +529,7 @@ export default function AdminDashboard({ email, onLogout }: AdminDashboardProps)
     if (!window.confirm("Are you sure you want to approve this course payment? This will instantly unlock full streaming access for this student!")) return;
     setSyncing(true);
     try {
-      const res = await fetch(`/api/payments/${paymentId}/approve`, {
-        method: "POST",
-        headers: getHeaders()
-      });
-      if (!res.ok) {
-        const data = await res.json();
-        throw new Error(data.error || "Approval failed.");
-      }
+      await approvePaymentInFirestore(paymentId);
       showFeedback("Student course payment approved! Full premium curriculum access unlocked.");
       await fetchAllData();
     } catch (err: any) {
@@ -620,14 +545,7 @@ export default function AdminDashboard({ email, onLogout }: AdminDashboardProps)
     if (!window.confirm("Are you sure you want to reject this payment request? This will revoke the student's access to this course!")) return;
     setSyncing(true);
     try {
-      const res = await fetch(`/api/payments/${paymentId}/reject`, {
-        method: "POST",
-        headers: getHeaders()
-      });
-      if (!res.ok) {
-        const data = await res.json();
-        throw new Error(data.error || "Rejection failed.");
-      }
+      await rejectPaymentInFirestore(paymentId);
       showFeedback("Student course payment request rejected and access revoked.");
       await fetchAllData();
     } catch (err: any) {
@@ -643,14 +561,7 @@ export default function AdminDashboard({ email, onLogout }: AdminDashboardProps)
     if (!window.confirm("Are you sure you want to permanently delete this payment request? This cannot be undone!")) return;
     setSyncing(true);
     try {
-      const res = await fetch(`/api/admin/payments/${paymentId}`, {
-        method: "DELETE",
-        headers: getHeaders()
-      });
-      if (!res.ok) {
-        const data = await res.json();
-        throw new Error(data.error || "Deletion failed.");
-      }
+      await deletePaymentRequest(paymentId);
       showFeedback("Payment request successfully deleted.");
       await fetchAllData();
     } catch (err: any) {

@@ -25,6 +25,7 @@ import VideosTab from "./dashboard/VideosTab";
 import BooksTab from "./dashboard/BooksTab";
 import TestsTab from "./dashboard/TestsTab";
 import ProfileTab from "./dashboard/ProfileTab";
+import { getStudentProfile, createOrUpdateStudentProfileOnLogin, updateStudentProfile } from "../lib/firebase";
 
 interface StudentDashboardProps {
   email: string;
@@ -51,13 +52,8 @@ export default function StudentDashboard({ email, onLogout }: StudentDashboardPr
   useEffect(() => {
     const fetchMe = async () => {
       try {
-        const token = localStorage.getItem("token");
-        if (!token) return;
-        const res = await fetch("/api/auth/me", {
-          headers: { Authorization: `Bearer ${token}` }
-        });
-        if (res.ok) {
-          const data = await res.json();
+        const data = await getStudentProfile(email);
+        if (data) {
           setProfile({
             name: data.name,
             email: data.email,
@@ -71,6 +67,12 @@ export default function StudentDashboard({ email, onLogout }: StudentDashboardPr
             lastActiveTime: data.lastActiveTime,
             isActive: data.isActive
           });
+        } else {
+          const newProfile = await createOrUpdateStudentProfileOnLogin({
+            email,
+            name: email.split("@")[0].charAt(0).toUpperCase() + email.split("@")[0].slice(1)
+          });
+          setProfile(newProfile);
         }
       } catch (err) {
         console.error("Failed to fetch student details on mount", err);
@@ -79,8 +81,13 @@ export default function StudentDashboard({ email, onLogout }: StudentDashboardPr
     fetchMe();
   }, [email]);
 
-  const handleUpdateProfile = (updated: Partial<StudentProfile>) => {
+  const handleUpdateProfile = async (updated: Partial<StudentProfile>) => {
     setProfile((prev) => ({ ...prev, ...updated }));
+    try {
+      await updateStudentProfile(email, updated);
+    } catch (err) {
+      console.error("Failed to persist updated profile in Firestore:", err);
+    }
   };
 
   const navItems = [

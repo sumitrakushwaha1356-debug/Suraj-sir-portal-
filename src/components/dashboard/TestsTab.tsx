@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import { Award, Timer, ShieldAlert, CheckCircle2, AlertCircle, Play, ChevronRight, ChevronLeft, Flag, HelpCircle, RefreshCw, X, Lock } from "lucide-react";
 import { Test, Question } from "../../types";
+import { getPurchases, getTests } from "../../lib/firebase";
 
 interface TestsTabProps {
   email?: string;
@@ -47,15 +48,10 @@ export default function TestsTab({ email }: TestsTabProps) {
 
   const fetchPurchases = async () => {
     try {
-      const token = localStorage.getItem("token");
-      if (!token) return;
-      const res = await fetch("/api/purchases/check", {
-        headers: { Authorization: `Bearer ${token}` }
-      });
-      if (res.ok) {
-        const data = await res.json();
-        setPurchases(data);
-      }
+      const userEmail = email || localStorage.getItem("userEmail") || "";
+      if (!userEmail) return;
+      const data = await getPurchases(userEmail);
+      setPurchases(data);
     } catch (err) {
       console.error("Failed to fetch student purchases:", err);
     }
@@ -65,14 +61,10 @@ export default function TestsTab({ email }: TestsTabProps) {
     setLoading(true);
     setError("");
     try {
-      const res = await fetch("/api/tests");
-      if (!res.ok) {
-        throw new Error("Failed to load standard test papers.");
-      }
-      const data = await res.json();
+      const data = await getTests();
       setTests(data);
     } catch (err: any) {
-      setError(err.message || "An unexpected network error occurred.");
+      setError(err.message || "An unexpected error occurred.");
     } finally {
       setLoading(false);
     }

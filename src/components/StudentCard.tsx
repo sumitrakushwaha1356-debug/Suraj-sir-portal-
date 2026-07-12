@@ -2,7 +2,7 @@ import React, { useState } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import { Mail, Lock, Eye, EyeOff, User, Check, AlertCircle, ArrowRight, BookOpen, KeyRound } from "lucide-react";
 import { signInWithPopup } from "firebase/auth";
-import { auth, googleProvider } from "../lib/firebase";
+import { auth, googleProvider, loginStudent, registerStudent, createOrUpdateStudentProfileOnLogin } from "../lib/firebase";
 
 interface StudentCardProps {
   onLoginSuccess: (email: string) => void;
@@ -56,27 +56,18 @@ export default function StudentCard({ onLoginSuccess }: StudentCardProps) {
     setIsSubmitting(true);
     
     try {
-      const res = await fetch("/api/auth/login", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email: signInEmail, password: signInPassword })
-      });
+      const userProfile = await loginStudent(signInEmail, signInPassword);
 
-      const data = await res.json();
-
-      if (!res.ok) {
-        throw new Error(data.error || "Login failed.");
-      }
-
-      localStorage.setItem("token", data.token);
-      localStorage.setItem("role", data.user.role);
+      localStorage.setItem("token", "dummy-firebase-token");
+      localStorage.setItem("role", userProfile.role || "student");
+      localStorage.setItem("userEmail", userProfile.email);
 
       setSuccessMsg("Success! Accessing student terminal...");
       setTimeout(() => {
         onLoginSuccess(signInEmail);
       }, 1200);
     } catch (err: any) {
-      setErrors({ form: err.message || "Network error. Please try again." });
+      setErrors({ form: err.message || "Login failed. Please try again." });
     } finally {
       setIsSubmitting(false);
     }
@@ -117,27 +108,18 @@ export default function StudentCard({ onLoginSuccess }: StudentCardProps) {
     setIsSubmitting(true);
     
     try {
-      const res = await fetch("/api/auth/register", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name: signUpName, email: signUpEmail, password: signUpPassword })
-      });
+      const userProfile = await registerStudent(signUpName, signUpEmail, signUpPassword);
 
-      const data = await res.json();
-
-      if (!res.ok) {
-        throw new Error(data.error || "Registration failed.");
-      }
-
-      localStorage.setItem("token", data.token);
-      localStorage.setItem("role", data.user.role);
+      localStorage.setItem("token", "dummy-firebase-token");
+      localStorage.setItem("role", userProfile.role || "student");
+      localStorage.setItem("userEmail", userProfile.email);
 
       setSuccessMsg("Account created! Logging you in...");
       setTimeout(() => {
         onLoginSuccess(signUpEmail);
       }, 1200);
     } catch (err: any) {
-      setErrors({ form: err.message || "Network error. Please try again." });
+      setErrors({ form: err.message || "Registration failed. Please try again." });
     } finally {
       setIsSubmitting(false);
     }
@@ -157,25 +139,14 @@ export default function StudentCard({ onLoginSuccess }: StudentCardProps) {
         throw new Error("Unable to retrieve Google user details from Firebase.");
       }
 
-      // Send the authenticated user details to our custom backend API
-      const res = await fetch("/api/auth/firebase-login", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          email: user.email,
-          name: user.displayName || "Google Student",
-          photoUrl: user.photoURL || "https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?auto=format&fit=crop&q=80&w=150",
-          googleId: user.uid
-        })
+      const userProfile = await createOrUpdateStudentProfileOnLogin({
+        email: user.email,
+        name: user.displayName || "Google Student",
+        photoUrl: user.photoURL || "https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?auto=format&fit=crop&q=80&w=150",
+        googleId: user.uid
       });
 
-      const data = await res.json();
-      if (!res.ok) {
-        throw new Error(data.error || "Failed to process login with the server.");
-      }
-
-      const { token, user: userProfile } = data;
-      localStorage.setItem("token", token);
+      localStorage.setItem("token", "dummy-firebase-token");
       localStorage.setItem("role", userProfile.role || "student");
       localStorage.setItem("userEmail", userProfile.email);
 

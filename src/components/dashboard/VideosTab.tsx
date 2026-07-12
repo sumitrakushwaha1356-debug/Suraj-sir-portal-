@@ -20,6 +20,7 @@ import {
   FileText
 } from "lucide-react";
 import { Playlist, Video, PaymentRequest } from "../../types";
+import { getPlaylists, getPaymentRequests, createPaymentRequest } from "../../lib/firebase";
 
 export default function VideosTab() {
   const [playlists, setPlaylists] = useState<(Playlist & { locked?: boolean })[]>([]);
@@ -56,17 +57,8 @@ export default function VideosTab() {
     setLoading(true);
     setError("");
     try {
-      const token = localStorage.getItem("token");
-      const headers: any = {};
-      if (token) {
-        headers["Authorization"] = `Bearer ${token}`;
-      }
-      
-      const res = await fetch("/api/student/playlists", { headers });
-      if (!res.ok) {
-        throw new Error("Failed to load video library database.");
-      }
-      const data = await res.json();
+      const email = localStorage.getItem("userEmail") || "";
+      const data = await getPlaylists(email);
       setPlaylists(data);
       
       // Keep selected playlist reference updated if it exists
@@ -77,7 +69,7 @@ export default function VideosTab() {
         }
       }
     } catch (err: any) {
-      setError(err.message || "An unexpected network error occurred.");
+      setError(err.message || "An unexpected error occurred.");
     } finally {
       setLoading(false);
     }
@@ -85,15 +77,10 @@ export default function VideosTab() {
 
   const fetchMyPaymentRequests = async () => {
     try {
-      const token = localStorage.getItem("token");
-      if (!token) return;
-      const res = await fetch("/api/payments/my-requests", {
-        headers: { Authorization: `Bearer ${token}` }
-      });
-      if (res.ok) {
-        const data = await res.json();
-        setMyPaymentRequests(data);
-      }
+      const email = localStorage.getItem("userEmail");
+      if (!email) return;
+      const data = await getPaymentRequests(email);
+      setMyPaymentRequests(data);
     } catch (err) {
       console.error("Failed to sync my payment requests:", err);
     }
@@ -175,26 +162,11 @@ export default function VideosTab() {
       reader.readAsDataURL(file);
       reader.onloadend = async () => {
         const base64Data = reader.result as string;
-        const token = localStorage.getItem("token");
-        const res = await fetch("/api/upload", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "Authorization": `Bearer ${token}`
-          },
-          body: JSON.stringify({ filename: file.name, base64Data })
-        });
-        
-        const data = await res.json();
-        if (!res.ok) {
-          throw new Error(data.error || "Failed to upload payment screenshot.");
-        }
-        
-        setScreenshotUrl(data.url);
+        setScreenshotUrl(base64Data);
+        setUploadingScreenshot(false);
       };
     } catch (err: any) {
       setPaymentError(err.message || "Failed to upload image file.");
-    } finally {
       setUploadingScreenshot(false);
     }
   };
@@ -213,25 +185,17 @@ export default function VideosTab() {
     setPaymentSubmitting(true);
     setPaymentError("");
     try {
-      const token = localStorage.getItem("token");
-      const res = await fetch("/api/payments/request", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "Authorization": `Bearer ${token}`
-        },
-        body: JSON.stringify({
-          courseType: paymentCourse,
-          amount: paymentAmount,
-          transactionId: transactionId.trim(),
-          screenshotUrl
-        })
-      });
+      const email = localStorage.getItem("userEmail") || "student@surajsir.com";
+      const studentName = localStorage.getItem("userName") || email.split("@")[0];
       
-      const data = await res.json();
-      if (!res.ok) {
-        throw new Error(data.error || "Failed to submit payment verification request.");
-      }
+      await createPaymentRequest(
+        email,
+        studentName,
+        paymentCourse,
+        paymentAmount,
+        transactionId.trim(),
+        screenshotUrl
+      );
       
       setPaymentSuccess(true);
       await fetchMyPaymentRequests(); // Sync requests list

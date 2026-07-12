@@ -2,6 +2,7 @@ import React, { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import { BookOpen, DollarSign, Archive, CheckCircle2, AlertCircle, ShoppingBag, Plus, Minus, X, Info, HelpCircle, Lock } from "lucide-react";
 import { Book } from "../../types";
+import { getPurchases, getBooks } from "../../lib/firebase";
 
 interface BooksTabProps {
   email?: string;
@@ -28,15 +29,10 @@ export default function BooksTab({ email }: BooksTabProps) {
 
   const fetchPurchases = async () => {
     try {
-      const token = localStorage.getItem("token");
-      if (!token) return;
-      const res = await fetch("/api/purchases/check", {
-        headers: { Authorization: `Bearer ${token}` }
-      });
-      if (res.ok) {
-        const data = await res.json();
-        setPurchases(data);
-      }
+      const userEmail = email || localStorage.getItem("userEmail") || "";
+      if (!userEmail) return;
+      const data = await getPurchases(userEmail);
+      setPurchases(data);
     } catch (err) {
       console.error("Failed to sync student purchases status:", err);
     }
@@ -46,14 +42,10 @@ export default function BooksTab({ email }: BooksTabProps) {
     setLoading(true);
     setError("");
     try {
-      const res = await fetch("/api/books");
-      if (!res.ok) {
-        throw new Error("Failed to load textbooks index.");
-      }
-      const data = await res.json();
+      const data = await getBooks();
       setBooks(data);
     } catch (err: any) {
-      setError(err.message || "An unexpected network error occurred.");
+      setError(err.message || "An unexpected error occurred.");
     } finally {
       setLoading(false);
     }
