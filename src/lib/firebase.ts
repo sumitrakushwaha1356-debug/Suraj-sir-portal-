@@ -3,12 +3,12 @@ import { getAuth, GoogleAuthProvider } from "firebase/auth";
 
 // Read from firebase-applet-config.json or use hardcoded safe defaults matching our project
 const firebaseConfig = {
-  apiKey: "AIzaSyB58_c3n5Xd6GbuCZuVIZ7PG-HjIgcgojk",
-  authDomain: "suraj-sir-portal.firebaseapp.com",
-  projectId: "suraj-sir-portal",
-  storageBucket: "suraj-sir-portal.firebasestorage.app",
-  messagingSenderId: "1031166717790",
-  appId: "1:1031166717790:web:61982d7e4b41963dde69cf"
+  apiKey: "AIzaSyAG0iWNaCDGQci1LjYxqnkqjhIBp3ze4M4",
+  authDomain: "dotted-maxim-v40ks.firebaseapp.com",
+  projectId: "dotted-maxim-v40ks",
+  storageBucket: "dotted-maxim-v40ks.firebasestorage.app",
+  messagingSenderId: "52143984830",
+  appId: "1:52143984830:web:5fd4a425ed0e657a7b0eef"
 };
 
 const app = initializeApp(firebaseConfig);

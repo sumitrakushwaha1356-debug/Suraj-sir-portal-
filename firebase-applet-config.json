@@ -1,11 +1,10 @@
 {
-  "projectId": "dotted-maxim-v40ks",
-  "appId": "1:52143984830:web:5fd4a425ed0e657a7b0eef",
-  "apiKey": "AIzaSyAG0iWNaCDGQci1LjYxqnkqjhIBp3ze4M4",
-  "authDomain": "dotted-maxim-v40ks.firebaseapp.com",
-  "firestoreDatabaseId": "ai-studio-surajsireducatio-125dac22-dec9-4948-bea5-a3d39141590d",
-  "storageBucket": "dotted-maxim-v40ks.firebasestorage.app",
-  "messagingSenderId": "52143984830",
+  "projectId": "suraj-sir-portal",
+  "appId": "1:1031166717790:web:61982d7e4b41963dde69cf",
+  "apiKey": "AIzaSyB58_c3n5Xd6GbuCZuVIZ7PG-HjIgcgojk",
+  "authDomain": "suraj-sir-portal.firebaseapp.com",
+  "storageBucket": "suraj-sir-portal.firebasestorage.app",
+  "messagingSenderId": "1031166717790",
   "measurementId": "",
-  "oAuthClientId": "52143984830-n00mls9bjrg6j5cab47tf4r76l7p2tdt.apps.googleusercontent.com"
+  "oAuthClientId": ""
 }
