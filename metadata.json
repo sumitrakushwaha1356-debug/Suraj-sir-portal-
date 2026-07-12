@@ -1,0 +1,6 @@
+{
+  "name": "Suraj Sir Education - Login",
+  "description": "Premium Student and Admin login portal for Suraj Sir Education, featuring a modern responsive split-screen design.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
