@@ -1,27 +1,26 @@
 import { useState, useEffect } from "react";
-import { motion, AnimatePresence } from "motion/react";
-import { GraduationCap, BookOpen, ShieldCheck, HelpCircle, PhoneCall, Sparkles } from "lucide-react";
-
-import LeftBanner from "./components/LeftBanner";
-import StudentCard from "./components/StudentCard";
-import AdminCard from "./components/AdminCard";
+import { GraduationCap, ShieldCheck, BookOpen, ArrowRight, Home } from "lucide-react";
 import StudentDashboard from "./components/StudentDashboard";
 import AdminDashboard from "./components/AdminDashboard";
+import homepageImg from "./assets/images/homepage.png";
 
 export default function App() {
-  const [currentPath, setCurrentPath] = useState(window.location.pathname);
-  const [loggedInEmail, setLoggedInEmail] = useState(() => {
-    return localStorage.getItem("email") || "";
+  const [view, setView] = useState<"home" | "student" | "admin">("home");
+  const [role, setRole] = useState<"student" | "admin">(() => {
+    return (localStorage.getItem("role") as "student" | "admin") || "student";
   });
 
-  const [loginRole, setLoginRole] = useState<"student" | "admin">("student");
-
-  // Sync state with browser navigation and shield against internal Firebase iframe/popup bugs
   useEffect(() => {
-    const handlePopState = () => {
-      setCurrentPath(window.location.pathname);
-    };
+    localStorage.setItem("role", role);
+    localStorage.setItem("email", role === "admin" ? "admin@surajsir.com" : "student@surajsir.com");
+  }, [role]);
 
+  const handleSwitchRole = (newRole: "student" | "admin") => {
+    setRole(newRole);
+  };
+
+  // Shield against internal Firebase iframe/popup rejection/cancelled-popup-request errors
+  useEffect(() => {
     const handleUnhandledRejection = (event: PromiseRejectionEvent) => {
       const reason = event.reason;
       if (
@@ -50,225 +49,218 @@ export default function App() {
       }
     };
 
-    window.addEventListener("popstate", handlePopState);
     window.addEventListener("unhandledrejection", handleUnhandledRejection);
     window.addEventListener("error", handleGlobalError);
 
     return () => {
-      window.removeEventListener("popstate", handlePopState);
       window.removeEventListener("unhandledrejection", handleUnhandledRejection);
       window.removeEventListener("error", handleGlobalError);
     };
   }, []);
 
-  // Handle deep-linking and security redirects
-  useEffect(() => {
-    const storedToken = localStorage.getItem("token");
-    const storedRole = localStorage.getItem("role");
-    const storedEmail = localStorage.getItem("email");
-
-    if (storedToken && storedRole && storedEmail) {
-      if (loggedInEmail !== storedEmail) {
-        setLoggedInEmail(storedEmail);
-      }
-      
-      // Auto-redirect from login to dashboard if already authenticated
-      if (currentPath === "/") {
-        if (storedRole === "admin") {
-          navigateTo("/admin-dashboard");
-        } else {
-          navigateTo("/student-dashboard");
-        }
-      }
-    } else {
-      // If no session exists but trying to access a dashboard, redirect to login page
-      if (currentPath === "/student-dashboard" || currentPath === "/admin-dashboard") {
-        navigateTo("/");
-      }
-    }
-  }, [currentPath, loggedInEmail]);
-
-  // Secure navigation helper
-  const navigateTo = (path: string) => {
-    window.history.pushState(null, "", path);
-    setCurrentPath(path);
-  };
-
-  const handleStudentLoginSuccess = (email: string) => {
-    localStorage.setItem("email", email);
-    localStorage.setItem("role", "student");
-    setLoggedInEmail(email);
-    navigateTo("/student-dashboard");
-  };
-
-  const handleAdminLoginSuccess = (email: string) => {
-    localStorage.setItem("email", email);
-    localStorage.setItem("role", "admin");
-    setLoggedInEmail(email);
-    navigateTo("/admin-dashboard");
-  };
-
-  const handleLogout = () => {
-    localStorage.removeItem("email");
-    localStorage.removeItem("role");
-    localStorage.removeItem("token");
-    setLoggedInEmail("");
-    navigateTo("/");
-  };
-
-  // Render correct route components
-  if (currentPath === "/student-dashboard") {
-    return (
-      <StudentDashboard
-        email={loggedInEmail || "student@surajsir.com"}
-        onLogout={handleLogout}
-      />
-    );
-  }
-
-  if (currentPath === "/admin-dashboard") {
+  if (view === "admin") {
     return (
       <AdminDashboard
-        email={loggedInEmail || "admin@surajsir.com"}
-        onLogout={handleLogout}
+        email="admin@surajsir.com"
+        onLogout={() => handleSwitchRole("student")}
+        onGoHome={() => setView("home")}
       />
     );
   }
 
+  if (view === "student") {
+    return (
+      <StudentDashboard
+        email="student@surajsir.com"
+        onLogout={() => handleSwitchRole("admin")}
+        onGoHome={() => setView("home")}
+      />
+    );
+  }
+
+  // Beautiful Home / Hub Landing Page
   return (
-    <div className="min-h-screen flex flex-col lg:flex-row bg-slate-50 text-navy-900 font-sans selection:bg-primary-100 selection:text-primary-900">
-      
-      {/* LEFT COLUMN: Premium Educator Showcase Banner (Desktop Only) */}
-      <div className="w-full lg:w-[42%] xl:w-[38%] shrink-0">
-        <LeftBanner />
+    <div className="min-h-screen bg-slate-50 text-navy-900 flex flex-col justify-between relative overflow-hidden font-sans">
+      {/* Decorative gradient glowing spheres */}
+      <div className="absolute top-[-10%] left-[-10%] w-96 h-96 bg-primary-500/10 rounded-full blur-[100px] pointer-events-none" />
+      <div className="absolute bottom-[-10%] right-[-10%] w-[500px] h-[500px] bg-accent-gold/5 rounded-full blur-[120px] pointer-events-none" />
+
+      {/* Main Container */}
+      <div className="w-full max-w-7xl mx-auto px-6 py-12 flex-1 flex flex-col justify-center relative z-10">
+        
+        {/* Split responsive grid */}
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-12 items-center w-full">
+          
+          {/* Left Column: Title and Portal Cards (7/12 cols) */}
+          <div className="lg:col-span-7 space-y-10">
+            {/* Header / Logo */}
+            <div className="space-y-6">
+              <div className="inline-flex items-center gap-3 bg-white border border-gray-100 shadow-sm px-4 py-2 rounded-full">
+                <div className="w-8 h-8 rounded-xl bg-gradient-to-tr from-primary-600 to-accent-gold p-0.5 flex items-center justify-center shadow-md">
+                  <div className="flex items-center justify-center w-full h-full rounded-[9px] bg-navy-950">
+                    <BookOpen className="w-4 h-4 text-accent-gold" />
+                  </div>
+                </div>
+                <span className="font-display font-extrabold text-sm tracking-tight text-navy-950">
+                  SURAJ SIR EDUCATION
+                </span>
+              </div>
+
+              <div className="space-y-3">
+                <h1 className="font-display text-4xl sm:text-5xl font-black tracking-tight text-navy-950">
+                  Suraj Sir Academy Portal
+                </h1>
+                <p className="text-sm sm:text-base text-gray-500 font-light leading-relaxed max-w-xl">
+                  Welcome to the official learning gateway. Select a portal terminal below to get started with your exam preparation or administrative tasks.
+                </p>
+              </div>
+            </div>
+
+            {/* Portal cards grid */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 w-full">
+              
+              {/* Card 1: Student Portal */}
+              <div 
+                onClick={() => setView("student")}
+                className="group bg-white border border-gray-100 rounded-[32px] p-6 shadow-sm hover:shadow-xl hover:border-primary-300 transition-all duration-300 cursor-pointer flex flex-col justify-between space-y-6 relative overflow-hidden"
+              >
+                <div className="absolute top-0 right-0 w-32 h-32 bg-primary-500/5 rounded-full blur-2xl group-hover:bg-primary-500/10 transition-colors pointer-events-none" />
+                
+                <div className="space-y-4">
+                  {/* Icon Container with beautiful background and halo */}
+                  <div className="w-12 h-12 rounded-2xl bg-primary-50 border border-primary-100 flex items-center justify-center text-primary-600 group-hover:scale-110 transition duration-300 shadow-inner">
+                    <GraduationCap className="w-6 h-6" />
+                  </div>
+
+                  <div className="space-y-1">
+                    <h3 className="font-display text-lg sm:text-xl font-extrabold text-navy-950 group-hover:text-primary-600 transition">
+                      Student Portal
+                    </h3>
+                    <p className="text-xs text-gray-500 font-light leading-relaxed">
+                      Access live course lecture syllabi, read expert reference textbook solutions, check physical notices, and complete active mock test sheets.
+                    </p>
+                  </div>
+
+                  {/* Bullet Features List */}
+                  <ul className="space-y-1.5 border-t border-gray-50 pt-3 text-[11px] text-gray-500 font-medium">
+                    <li className="flex items-center gap-2">
+                      <span className="w-1.5 h-1.5 rounded-full bg-primary-500" />
+                      <span>Class 10th & 12th Free Batches</span>
+                    </li>
+                    <li className="flex items-center gap-2">
+                      <span className="w-1.5 h-1.5 rounded-full bg-primary-500" />
+                      <span>Syllabus-aligned Video Playlists</span>
+                    </li>
+                    <li className="flex items-center gap-2">
+                      <span className="w-1.5 h-1.5 rounded-full bg-primary-500" />
+                      <span>Curated reference books & PDF sheets</span>
+                    </li>
+                  </ul>
+                </div>
+
+                <button className="w-full py-3 px-5 rounded-2xl bg-primary-600 hover:bg-primary-700 text-white font-bold text-xs sm:text-sm flex items-center justify-center gap-2 shadow-md hover:shadow-lg hover:shadow-primary-600/15 transition duration-300 cursor-pointer">
+                  <span>Enter Scholar Console</span>
+                  <ArrowRight className="w-4 h-4 transform group-hover:translate-x-1 transition duration-300" />
+                </button>
+              </div>
+
+              {/* Card 2: Admin Panel */}
+              <div 
+                onClick={() => setView("admin")}
+                className="group bg-white border border-gray-100 rounded-[32px] p-6 shadow-sm hover:shadow-xl hover:border-accent-amber/30 transition-all duration-300 cursor-pointer flex flex-col justify-between space-y-6 relative overflow-hidden"
+              >
+                <div className="absolute top-0 right-0 w-32 h-32 bg-accent-gold/5 rounded-full blur-2xl group-hover:bg-accent-gold/10 transition-colors pointer-events-none" />
+                
+                <div className="space-y-4">
+                  {/* Icon Container */}
+                  <div className="w-12 h-12 rounded-2xl bg-amber-50 border border-amber-100 flex items-center justify-center text-accent-amber group-hover:scale-110 transition duration-300 shadow-inner">
+                    <ShieldCheck className="w-6 h-6" />
+                  </div>
+
+                  <div className="space-y-1">
+                    <h3 className="font-display text-lg sm:text-xl font-extrabold text-navy-950 group-hover:text-accent-amber transition">
+                      Admin Panel
+                    </h3>
+                    <p className="text-xs text-gray-500 font-light leading-relaxed">
+                      Manage online classes databases, register syllabus streams, add chapters, configure physical testing resources, and verify student registration payments.
+                    </p>
+                  </div>
+
+                  {/* Bullet Features List */}
+                  <ul className="space-y-1.5 border-t border-gray-50 pt-3 text-[11px] text-gray-500 font-medium">
+                    <li className="flex items-center gap-2">
+                      <span className="w-1.5 h-1.5 rounded-full bg-accent-gold" />
+                      <span>Real-time lecture uploads & indexing</span>
+                    </li>
+                    <li className="flex items-center gap-2">
+                      <span className="w-1.5 h-1.5 rounded-full bg-accent-gold" />
+                      <span>UPI Payment verification triggers</span>
+                    </li>
+                    <li className="flex items-center gap-2">
+                      <span className="w-1.5 h-1.5 rounded-full bg-accent-gold" />
+                      <span>Student account deactivation panel</span>
+                    </li>
+                  </ul>
+                </div>
+
+                <button className="w-full py-3 px-5 rounded-2xl bg-navy-950 hover:bg-navy-900 border border-navy-900 text-white font-bold text-xs sm:text-sm flex items-center justify-center gap-2 shadow-md hover:shadow-lg transition duration-300 cursor-pointer">
+                  <span>Enter Admin Control</span>
+                  <ArrowRight className="w-4 h-4 transform group-hover:translate-x-1 transition duration-300 text-accent-gold" />
+                </button>
+              </div>
+
+            </div>
+          </div>
+
+          {/* Right Column: Stunning Homepage Image frame (5/12 cols) */}
+          <div className="lg:col-span-5 relative group w-full max-w-md mx-auto lg:max-w-none">
+            {/* Back glowing ambient border */}
+            <div className="absolute inset-0 bg-gradient-to-tr from-primary-600/10 to-accent-gold/20 rounded-[40px] blur-2xl group-hover:scale-105 transition duration-500" />
+            
+            <div className="relative bg-white border border-gray-100 p-4 rounded-[40px] shadow-xl hover:shadow-2xl transition duration-500">
+              <div className="overflow-hidden rounded-[28px] aspect-[4/3] sm:aspect-[16/10] lg:aspect-[4/5] bg-slate-100 relative flex items-center justify-center">
+                {/* Image element referring to the requested homepage.png path */}
+                <img 
+                  src={homepageImg} 
+                  alt="Suraj Sir Academy Homepage" 
+                  className="w-full h-full object-cover group-hover:scale-105 transition-all duration-700 select-none"
+                  referrerPolicy="no-referrer"
+                  onError={(e) => {
+                    // Fail-safe backdrop if image is empty or can't be decoded
+                    e.currentTarget.style.opacity = "0.3";
+                  }}
+                />
+                
+                {/* Beautiful Modern Minimalistic overlay styling */}
+                <div className="absolute inset-0 bg-gradient-to-t from-navy-950 via-navy-950/40 to-transparent flex flex-col justify-end p-8 text-white text-left">
+                  <div className="bg-accent-gold text-navy-950 font-mono font-bold text-[10px] tracking-widest px-3 py-1 rounded-full w-fit mb-3 shadow-sm">
+                    CAMPUS LEARNING
+                  </div>
+                  <h4 className="font-display font-black text-xl tracking-tight text-white leading-tight">
+                    Smart Geography & General Science Solutions
+                  </h4>
+                  <p className="text-xs text-gray-200 font-light mt-2 leading-relaxed">
+                    Access expert digital learning materials, syllabus maps, high-definition lecture playlists, and curated mock examinations directly from Suraj Sir's panel.
+                  </p>
+                  
+                  {/* Subtle badges */}
+                  <div className="flex gap-2 mt-4 pt-4 border-t border-white/10 text-[10px] text-gray-300 font-medium">
+                    <span className="px-2 py-0.5 rounded bg-white/10">10th Boards Prep</span>
+                    <span className="px-2 py-0.5 rounded bg-white/10">12th Boards Prep</span>
+                    <span className="px-2 py-0.5 rounded bg-white/10">Free Online Coaching</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+        </div>
+
       </div>
 
-      {/* RIGHT COLUMN: Interactive Login Cards (Dual View) */}
-      <div className="flex-1 flex flex-col justify-between p-4 sm:p-8 lg:p-12 xl:p-16 relative">
-        {/* Subtle background glow decoration */}
-        <div className="absolute top-1/4 right-1/4 w-96 h-96 bg-primary-100/40 rounded-full blur-3xl pointer-events-none" />
-        <div className="absolute bottom-1/4 left-1/4 w-96 h-96 bg-amber-50/50 rounded-full blur-3xl pointer-events-none" />
-
-        {/* Small Responsive Mobile Branding Header (Only visible on mobile/tablet) */}
-        <div className="flex lg:hidden items-center justify-between border-b border-gray-100 pb-4 mb-6">
-          <div className="flex items-center gap-2">
-            <div className="w-9 h-9 rounded-lg bg-gradient-to-tr from-primary-600 to-accent-gold flex items-center justify-center text-white">
-              <BookOpen className="w-5 h-5 text-white" />
-            </div>
-            <div>
-              <span className="font-display font-bold tracking-tight text-navy-900 text-sm">
-                SURAJ SIR EDUCATION
-              </span>
-              <span className="text-[9px] font-semibold text-gray-500 uppercase tracking-widest block -mt-1">
-                Portal Hub
-              </span>
-            </div>
-          </div>
-          <span className="text-xs font-bold text-primary-600 flex items-center gap-1 bg-primary-50 px-2.5 py-1 rounded-full">
-            <Sparkles className="w-3.5 h-3.5 text-accent-gold" />
-            <span>Join 10k+ Learners</span>
-          </span>
-        </div>
-
-        {/* Top welcome/support status header */}
-        <div className="relative z-10 hidden sm:flex justify-between items-center mb-8">
-          <div>
-            <h2 className="font-display text-lg font-bold text-navy-900">
-              Welcome to the Knowledge Network
-            </h2>
-            <p className="text-xs text-gray-400">
-              Select your respective terminal to authenticate and enter.
-            </p>
-          </div>
-          
-          <div className="flex items-center gap-4 text-xs font-medium text-gray-500">
-            <a href="#support" onClick={(e) => e.preventDefault()} className="hover:text-primary-600 transition flex items-center gap-1">
-              <HelpCircle className="w-4 h-4 text-gray-400" />
-              <span>Need Help?</span>
-            </a>
-            <span className="text-gray-200">|</span>
-            <a href="tel:+1234567890" className="hover:text-primary-600 transition flex items-center gap-1">
-              <PhoneCall className="w-4 h-4 text-gray-400" />
-              <span>Support Desk</span>
-            </a>
-          </div>
-        </div>
-
-        {/* Centered Single Form Container */}
-        <div className="relative z-10 my-auto flex flex-col justify-center items-center w-full max-w-lg mx-auto">
-          <div className="w-full text-center mb-6">
-            <h1 className="font-display text-2xl sm:text-3xl font-extrabold tracking-tight text-navy-950 mb-1">
-              Suraj Sir Education Portal
-            </h1>
-            <p className="text-xs sm:text-sm text-gray-500 max-w-sm mx-auto">
-              Secure authentication for the online learning coaching system. Choose your terminal below to enter.
-            </p>
-          </div>
-
-          {/* Segmented Sliding Tab Switcher */}
-          <div className="flex bg-slate-150 p-1.5 rounded-2xl w-full mb-6 border border-gray-200 shadow-xs">
-            <button
-              onClick={() => setLoginRole("student")}
-              className={`flex-1 py-3 rounded-xl font-bold text-xs sm:text-sm transition flex items-center justify-center gap-2 cursor-pointer ${
-                loginRole === "student"
-                  ? "bg-white text-navy-950 shadow-md scale-[1.02] border border-gray-100"
-                  : "text-gray-500 hover:text-navy-950 hover:bg-slate-50/50"
-              }`}
-            >
-              <GraduationCap className="w-4 h-4 text-primary-600" />
-              <span>Student Terminal</span>
-            </button>
-            <button
-              onClick={() => setLoginRole("admin")}
-              className={`flex-1 py-3 rounded-xl font-bold text-xs sm:text-sm transition flex items-center justify-center gap-2 cursor-pointer ${
-                loginRole === "admin"
-                  ? "bg-white text-navy-950 shadow-md scale-[1.02] border border-gray-100"
-                  : "text-gray-500 hover:text-navy-950 hover:bg-slate-50/50"
-              }`}
-            >
-              <ShieldCheck className="w-4 h-4 text-accent-gold" />
-              <span>Admin Control</span>
-            </button>
-          </div>
-
-          <div className="w-full relative min-h-[500px]">
-            <AnimatePresence mode="wait">
-              {loginRole === "student" ? (
-                <motion.div
-                  key="student-card"
-                  initial={{ opacity: 0, y: 15 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0, y: -15 }}
-                  transition={{ duration: 0.4 }}
-                  className="w-full"
-                >
-                  <StudentCard onLoginSuccess={handleStudentLoginSuccess} />
-                </motion.div>
-              ) : (
-                <motion.div
-                  key="admin-card"
-                  initial={{ opacity: 0, y: 15 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0, y: -15 }}
-                  transition={{ duration: 0.4 }}
-                  className="w-full"
-                >
-                  <AdminCard onLoginSuccess={handleAdminLoginSuccess} />
-                </motion.div>
-              )}
-            </AnimatePresence>
-          </div>
-        </div>
-
-        {/* Footer info for right side */}
-        <div className="relative z-10 mt-10 border-t border-gray-100 pt-6 text-center text-[11px] text-gray-400 flex flex-col sm:flex-row justify-between items-center gap-3">
-          <p>© {new Date().getFullYear()} Suraj Sir Education. All rights reserved.</p>
-          <div className="flex gap-4">
-            <a href="#privacy" onClick={(e) => e.preventDefault()} className="hover:text-primary-600 transition">Privacy Statement</a>
-            <span>•</span>
-            <a href="#cookies" onClick={(e) => e.preventDefault()} className="hover:text-primary-600 transition">Cookie Settings</a>
-          </div>
-        </div>
+      {/* Footer */}
+      <div className="w-full text-center py-6 border-t border-gray-100 text-xs text-gray-400 z-10 bg-white">
+        &copy; {new Date().getFullYear()} Suraj Sir Education. Dynamic Campus environment. All rights reserved.
       </div>
     </div>
   );

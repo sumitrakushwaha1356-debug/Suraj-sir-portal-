@@ -17,14 +17,20 @@ import {
   Check,
   UploadCloud,
   X,
-  FileText
+  FileText,
+  Home
 } from "lucide-react";
 import { Playlist, Video, PaymentRequest } from "../../types";
-import { getPlaylists, getPaymentRequests, createPaymentRequest } from "../../lib/firebase";
+import { getPlaylists, getPaymentRequests, createPaymentRequest, db, getPurchases } from "../../lib/firebase";
+import { onSnapshot, collection } from "firebase/firestore";
 
-export default function VideosTab() {
+interface VideosTabProps {
+  onGoHome?: () => void;
+}
+
+export default function VideosTab({ onGoHome }: VideosTabProps) {
   const [playlists, setPlaylists] = useState<(Playlist & { locked?: boolean })[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [purchasing, setPurchasing] = useState(false);
   
@@ -49,30 +55,115 @@ export default function VideosTab() {
   const [myPaymentRequests, setMyPaymentRequests] = useState<PaymentRequest[]>([]);
 
   useEffect(() => {
-    fetchPlaylists();
+    const email = localStorage.getItem("userEmail") || "guest@educationportal.com";
+    
+    setLoading(true);
+    setError("");
+
+    // Real-time listener on "playlists" collection
+    const unsubscribe = onSnapshot(
+      collection(db, "playlists"),
+      async (snapshot) => {
+        try {
+          const dbPlaylists = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as any[];
+          
+          const purchasesObj = await getPurchases(email);
+          const hasClass10 = purchasesObj["Class 10"];
+          const hasClass12 = purchasesObj["Class 12"];
+          
+          // Map all playlists from Firestore
+          const mappedPlaylists = dbPlaylists.map(pl => {
+            const level = pl.classLevel || "Class 12";
+            let isPurchased = false;
+            if (level === "Class 10" || level === "10th") isPurchased = hasClass10;
+            else if (level === "Class 12" || level === "12th") isPurchased = hasClass12;
+            
+            // Free batches are always unlocked, others based on purchase
+            const isFreeBatch = pl.id === "class-10-free-batch" || pl.id === "class-12-free-batch" || pl.id.includes("free-batch");
+            const locked = isFreeBatch ? false : !isPurchased;
+
+            return {
+              ...pl,
+              locked
+            };
+          });
+
+          const class10Db = mappedPlaylists.find(p => p.id === "class-10-free-batch");
+          const class12Db = mappedPlaylists.find(p => p.id === "class-12-free-batch");
+
+          const finalPlaylistsList = [
+            {
+              id: "class-10-free-batch",
+              title: class10Db?.title || "Class 10th Free Batch",
+              thumbnail: class10Db?.thumbnail || "https://images.unsplash.com/photo-1532187863486-abf9d39d66e8?auto=format&fit=crop&q=80&w=400",
+              videoCount: class10Db ? class10Db.videos.length : 0,
+              description: class10Db?.description || "All-in-one free coaching batch designed for Class 10th boards preparation and fundamental concepts covering Math, Science & more.",
+              classLevel: class10Db?.classLevel || "Class 10",
+              videos: class10Db ? class10Db.videos : [],
+              locked: false
+            },
+            {
+              id: "class-12-free-batch",
+              title: class12Db?.title || "Class 12th Free Batch",
+              thumbnail: class12Db?.thumbnail || "https://images.unsplash.com/photo-1614064641938-3bbee52942c7?auto=format&fit=crop&q=80&w=400",
+              videoCount: class12Db ? class12Db.videos.length : 0,
+              description: class12Db?.description || "Comprehensive free batch covering Class 12th board syllabus, advanced board exams concepts and exercises with Suraj Sir.",
+              classLevel: class12Db?.classLevel || "Class 12",
+              videos: class12Db ? class12Db.videos : [],
+              locked: false
+            }
+          ];
+
+          // If there are other playlists in mappedPlaylists, append them to finalPlaylistsList
+          mappedPlaylists.forEach(pl => {
+            if (pl.id !== "class-10-free-batch" && pl.id !== "class-12-free-batch") {
+              finalPlaylistsList.push({
+                ...pl,
+                videoCount: pl.videos ? pl.videos.length : 0,
+                videos: pl.videos || [],
+                locked: pl.locked !== undefined ? pl.locked : true
+              });
+            }
+          });
+          
+          setPlaylists(finalPlaylistsList);
+          
+          // Auto-sync selected playlist structure when updated
+          setSelectedPlaylist(prevSelected => {
+            if (!prevSelected) return null;
+            const updatedSelected = finalPlaylistsList.find(p => p.id === prevSelected.id);
+            if (updatedSelected) {
+              setCurrentVideo(prevVid => {
+                if (!prevVid) return null;
+                const updatedVid = updatedSelected.videos.find(v => v.id === prevVid.id);
+                return updatedVid || prevVid;
+              });
+              return updatedSelected;
+            }
+            return prevSelected;
+          });
+          
+          setLoading(false);
+        } catch (err: any) {
+          setError(err.message || "An unexpected error occurred during real-time sync.");
+          setLoading(false);
+        }
+      },
+      (err) => {
+        setError(err.message || "Failed to load real-time playlists snapshot.");
+        setLoading(false);
+      }
+    );
+
     fetchMyPaymentRequests();
+
+    return () => {
+      unsubscribe();
+    };
   }, []);
 
   const fetchPlaylists = async () => {
-    setLoading(true);
-    setError("");
-    try {
-      const email = localStorage.getItem("userEmail") || "";
-      const data = await getPlaylists(email);
-      setPlaylists(data);
-      
-      // Keep selected playlist reference updated if it exists
-      if (selectedPlaylist) {
-        const updatedSelected = data.find((p: any) => p.id === selectedPlaylist.id);
-        if (updatedSelected) {
-          setSelectedPlaylist(updatedSelected);
-        }
-      }
-    } catch (err: any) {
-      setError(err.message || "An unexpected error occurred.");
-    } finally {
-      setLoading(false);
-    }
+    // Managed by real-time subscription
   };
 
   const fetchMyPaymentRequests = async () => {
@@ -159,12 +250,16 @@ export default function VideosTab() {
     setPaymentError("");
     try {
       const reader = new FileReader();
-      reader.readAsDataURL(file);
       reader.onloadend = async () => {
         const base64Data = reader.result as string;
         setScreenshotUrl(base64Data);
         setUploadingScreenshot(false);
       };
+      reader.onerror = () => {
+        setPaymentError("Failed to read image file.");
+        setUploadingScreenshot(false);
+      };
+      reader.readAsDataURL(file);
     } catch (err: any) {
       setPaymentError(err.message || "Failed to upload image file.");
       setUploadingScreenshot(false);
@@ -452,16 +547,6 @@ export default function VideosTab() {
     );
   }
 
-  // 1. LOADING STATE
-  if (loading && playlists.length === 0) {
-    return (
-      <div className="flex flex-col items-center justify-center min-h-[400px] space-y-4">
-        <div className="w-12 h-12 border-4 border-primary-100 border-t-primary-600 rounded-full animate-spin" />
-        <p className="text-sm font-semibold text-gray-500">Syncing live playlist records from server...</p>
-      </div>
-    );
-  }
-
   // 2. ERROR STATE
   if (error && playlists.length === 0) {
     return (
@@ -504,13 +589,25 @@ export default function VideosTab() {
       <div className="space-y-6">
         {/* Navigation Breadcrumb */}
         <div className="flex flex-wrap items-center justify-between gap-4">
-          <button
-            onClick={handleBackToVideosList}
-            className="inline-flex items-center gap-1.5 py-1.5 px-3 rounded-lg border border-gray-200 bg-white hover:bg-slate-50 text-xs font-bold text-navy-900 shadow-sm active:scale-95 transition cursor-pointer"
-          >
-            <ArrowLeft className="w-4 h-4" />
-            <span>Back to Playlist: {selectedPlaylist.title}</span>
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={handleBackToVideosList}
+              className="inline-flex items-center gap-1.5 py-1.5 px-3 rounded-lg border border-gray-200 bg-white hover:bg-slate-50 text-xs font-bold text-navy-900 shadow-sm active:scale-95 transition cursor-pointer"
+            >
+              <ArrowLeft className="w-4 h-4" />
+              <span>Back to Playlist: {selectedPlaylist.title}</span>
+            </button>
+            {onGoHome && (
+              <button
+                onClick={onGoHome}
+                className="inline-flex items-center gap-1.5 py-1.5 px-3 rounded-lg border border-gray-200 bg-white hover:bg-slate-50 text-xs font-bold text-navy-900 shadow-sm active:scale-95 transition cursor-pointer"
+                title="Return to Main Home"
+              >
+                <Home className="w-3.5 h-3.5 text-accent-gold" />
+                <span>Home</span>
+              </button>
+            )}
+          </div>
           
           <div className="flex items-center gap-2 text-xs font-medium text-gray-400 bg-slate-100 px-3 py-1.5 rounded-lg">
             <span className="w-2 h-2 rounded-full bg-emerald-500" />
@@ -622,13 +719,25 @@ export default function VideosTab() {
           <div className="absolute top-0 right-0 w-48 h-48 bg-primary-600/10 rounded-full blur-xl pointer-events-none" />
           
           <div className="relative z-10 space-y-3">
-            <button
-              onClick={handleBackToPlaylists}
-              className="inline-flex items-center gap-1.5 py-1 px-3 rounded-lg bg-white/10 hover:bg-white/15 text-[11px] font-bold text-accent-gold backdrop-blur-sm transition border border-white/10 cursor-pointer"
-            >
-              <ArrowLeft className="w-3.5 h-3.5" />
-              <span>Back to Library</span>
-            </button>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={handleBackToPlaylists}
+                className="inline-flex items-center gap-1.5 py-1 px-3 rounded-lg bg-white/10 hover:bg-white/15 text-[11px] font-bold text-accent-gold backdrop-blur-sm transition border border-white/10 cursor-pointer"
+              >
+                <ArrowLeft className="w-3.5 h-3.5" />
+                <span>Back to Library</span>
+              </button>
+              {onGoHome && (
+                <button
+                  onClick={onGoHome}
+                  className="inline-flex items-center gap-1.5 py-1 px-3 rounded-lg bg-white/10 hover:bg-white/15 text-[11px] font-bold text-accent-gold backdrop-blur-sm transition border border-white/10 cursor-pointer"
+                  title="Return to Main Home"
+                >
+                  <Home className="w-3 h-3 text-accent-gold animate-pulse" />
+                  <span>Home</span>
+                </button>
+              )}
+            </div>
             <div className="flex items-center gap-2 flex-wrap">
               <span className="text-[10px] font-bold tracking-widest text-primary-300 uppercase block">
                 IIT-JEE PREPARATION BATCHES
@@ -741,62 +850,76 @@ export default function VideosTab() {
           </h3>
           
           <div className="grid grid-cols-1 gap-3.5">
-            {(selectedPlaylist.videos || []).map((vid, idx) => (
-              <div
-                key={vid.id}
-                onClick={() => !isLocked && handlePlayVideo(vid)}
-                className={`bg-white border rounded-2xl p-4 sm:p-5 transition-all flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 group ${
-                  isLocked 
-                    ? "border-gray-100 opacity-60 cursor-not-allowed select-none" 
-                    : "border-gray-100 hover:border-primary-400 hover:shadow-md cursor-pointer"
-                }`}
-              >
-                <div className="flex items-start gap-4">
-                  <div className={`w-10 h-10 rounded-xl font-bold font-mono text-sm flex items-center justify-center shrink-0 transition-all ${
+            {(selectedPlaylist.videos || []).length > 0 ? (
+              (selectedPlaylist.videos || []).map((vid, idx) => (
+                <div
+                  key={vid.id}
+                  onClick={() => !isLocked && handlePlayVideo(vid)}
+                  className={`bg-white border rounded-2xl p-4 sm:p-5 transition-all flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 group ${
                     isLocked 
-                      ? "bg-slate-100 text-slate-400" 
-                      : "bg-primary-50 text-primary-600 group-hover:bg-primary-600 group-hover:text-white"
-                  }`}>
-                    {isLocked ? <Lock className="w-4 h-4" /> : idx + 1}
-                  </div>
-                  <div className="space-y-1">
-                    <h4 className={`text-sm font-bold transition ${
-                      isLocked ? "text-gray-400" : "text-navy-950 group-hover:text-primary-700"
-                    }`}>
-                      {vid.title}
-                    </h4>
-                    <p className="text-xs text-gray-400 line-clamp-1 max-w-xl font-light">
-                      {vid.description}
-                    </p>
-                    <span className="inline-flex items-center gap-1 text-[11px] font-medium text-gray-500 bg-slate-50 border border-gray-100 px-2 py-0.5 rounded-md">
-                      <Clock className="w-3 h-3 text-primary-500" /> {vid.duration}
-                    </span>
-                  </div>
-                </div>
-
-                <button
-                  type="button"
-                  disabled={isLocked}
-                  className={`py-2 px-4 rounded-xl text-xs font-bold flex items-center gap-1.5 self-end sm:self-center shrink-0 transition ${
-                    isLocked 
-                      ? "bg-slate-50 text-slate-400 border border-slate-100" 
-                      : "bg-primary-50 group-hover:bg-primary-600 text-primary-700 group-hover:text-white"
+                      ? "border-gray-100 opacity-60 cursor-not-allowed select-none" 
+                      : "border-gray-100 hover:border-primary-400 hover:shadow-md cursor-pointer"
                   }`}
                 >
-                  {isLocked ? (
-                    <>
-                      <Lock className="w-3.5 h-3.5" />
-                      <span>Locked</span>
-                    </>
-                  ) : (
-                    <>
-                      <Play className="w-3.5 h-3.5 fill-current" />
-                      <span>Play Lecture</span>
-                    </>
-                  )}
-                </button>
+                  <div className="flex items-start gap-4">
+                    <div className={`w-10 h-10 rounded-xl font-bold font-mono text-sm flex items-center justify-center shrink-0 transition-all ${
+                      isLocked 
+                        ? "bg-slate-100 text-slate-400" 
+                        : "bg-primary-50 text-primary-600 group-hover:bg-primary-600 group-hover:text-white"
+                    }`}>
+                      {isLocked ? <Lock className="w-4 h-4" /> : idx + 1}
+                    </div>
+                    <div className="space-y-1">
+                      <h4 className={`text-sm font-bold transition ${
+                        isLocked ? "text-gray-400" : "text-navy-950 group-hover:text-primary-700"
+                      }`}>
+                        {vid.title}
+                      </h4>
+                      <p className="text-xs text-gray-400 line-clamp-1 max-w-xl font-light">
+                        {vid.description}
+                      </p>
+                      <span className="inline-flex items-center gap-1 text-[11px] font-medium text-gray-500 bg-slate-50 border border-gray-100 px-2 py-0.5 rounded-md">
+                        <Clock className="w-3 h-3 text-primary-500" /> {vid.duration}
+                      </span>
+                    </div>
+                  </div>
+
+                  <button
+                    type="button"
+                    disabled={isLocked}
+                    className={`py-2 px-4 rounded-xl text-xs font-bold flex items-center gap-1.5 self-end sm:self-center shrink-0 transition ${
+                      isLocked 
+                        ? "bg-slate-50 text-slate-400 border border-slate-100" 
+                        : "bg-primary-50 group-hover:bg-primary-600 text-primary-700 group-hover:text-white"
+                    }`}
+                  >
+                    {isLocked ? (
+                      <>
+                        <Lock className="w-3.5 h-3.5" />
+                        <span>Locked</span>
+                      </>
+                    ) : (
+                      <>
+                        <Play className="w-3.5 h-3.5 fill-current" />
+                        <span>Play Lecture</span>
+                      </>
+                    )}
+                  </button>
+                </div>
+              ))
+            ) : (
+              <div className="bg-white border border-gray-100 rounded-[24px] p-12 text-center space-y-4 shadow-sm">
+                <div className="w-14 h-14 rounded-2xl bg-primary-50 border border-primary-100 flex items-center justify-center text-primary-600 mx-auto">
+                  <VideoIcon className="w-6 h-6" />
+                </div>
+                <div className="space-y-1">
+                  <h4 className="text-sm font-bold text-navy-950">No Lectures Uploaded Yet</h4>
+                  <p className="text-xs text-gray-400 max-w-md mx-auto leading-relaxed">
+                    This free batch registration is active! Suraj Sir will be uploading high-definition lectures, formulas, and mock sheets here very soon. Stay tuned!
+                  </p>
+                </div>
               </div>
-            ))}
+            )}
           </div>
         </div>
       </div>

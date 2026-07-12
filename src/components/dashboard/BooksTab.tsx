@@ -10,7 +10,7 @@ interface BooksTabProps {
 
 export default function BooksTab({ email }: BooksTabProps) {
   const [books, setBooks] = useState<Book[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
   // Interactive purchase states
@@ -98,16 +98,6 @@ export default function BooksTab({ email }: BooksTabProps) {
       setBooks(updatedBooks);
     }, 400);
   };
-
-  // 1. LOADING STATE
-  if (loading) {
-    return (
-      <div className="flex flex-col items-center justify-center min-h-[400px] space-y-4">
-        <div className="w-12 h-12 border-4 border-primary-100 border-t-primary-600 rounded-full animate-spin" />
-        <p className="text-sm font-semibold text-gray-500">Syncing resource catalogs from server...</p>
-      </div>
-    );
-  }
 
   // 2. ERROR STATE
   if (error) {

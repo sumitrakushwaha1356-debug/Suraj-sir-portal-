@@ -25,7 +25,9 @@ import {
   ArrowLeft,
   Settings,
   HelpCircle,
-  Search
+  Search,
+  GraduationCap,
+  Home
 } from "lucide-react";
 
 import { Playlist, Video, Book, Test, StudentProfile, PaymentRequest } from "../types";
@@ -57,9 +59,10 @@ import {
 interface AdminDashboardProps {
   email: string;
   onLogout: () => void;
+  onGoHome?: () => void;
 }
 
-export default function AdminDashboard({ email, onLogout }: AdminDashboardProps) {
+export default function AdminDashboard({ email, onLogout, onGoHome }: AdminDashboardProps) {
   // Navigation states
   const [activeTab, setActiveTab] = useState<string>("overview");
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -72,7 +75,7 @@ export default function AdminDashboard({ email, onLogout }: AdminDashboardProps)
   const [payments, setPayments] = useState<PaymentRequest[]>([]);
 
   // Loading & Feedback States
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const [successMsg, setSuccessMsg] = useState("");
   const [errorMsg, setErrorMsg] = useState("");
@@ -87,6 +90,15 @@ export default function AdminDashboard({ email, onLogout }: AdminDashboardProps)
   const [selectedPlaylistForVideos, setSelectedPlaylistForVideos] = useState<Playlist | null>(null);
   const [editingVideo, setEditingVideo] = useState<Video | null>(null);
   const [videoForm, setVideoForm] = useState({ title: "", duration: "15:00", embedCode: "", description: "", videoUrl: "" });
+
+  // Playlist Management Form States (Class 10th & 12th Free Batches)
+  const [pmPlaylistSelection, setPmPlaylistSelection] = useState<string>("class-12-free-batch");
+  const [pmVideoTitle, setPmVideoTitle] = useState<string>("");
+  const [pmYoutubeUrl, setPmYoutubeUrl] = useState<string>("");
+  const [pmVideoDescription, setPmVideoDescription] = useState<string>("");
+  const [pmThumbnailUrl, setPmThumbnailUrl] = useState<string>("");
+  const [pmEditingVideoId, setPmEditingVideoId] = useState<string | null>(null);
+  const [pmOriginalPlaylistId, setPmOriginalPlaylistId] = useState<string | null>(null);
 
   const [bookModalOpen, setBookModalOpen] = useState(false);
   const [editingBook, setEditingBook] = useState<Book | null>(null);
@@ -344,6 +356,130 @@ export default function AdminDashboard({ email, onLogout }: AdminDashboardProps)
   };
 
   // ==========================================
+  // PLAYLIST MANAGEMENT TAB HANDLERS
+  // ==========================================
+  const getYoutubeId = (url: string) => {
+    if (!url) return "";
+    const regExp = /^.*(youtu.be\/|v\/|u\/\w\/|embed\/|watch\?v=|\&v=)([^#\&\?]*).*/;
+    const match = url.match(regExp);
+    return (match && match[2].length === 11) ? match[2] : url;
+  };
+
+  const handlePmSaveVideo = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!pmPlaylistSelection) {
+      showFeedback("Please select a playlist.", true);
+      return;
+    }
+    if (!pmVideoTitle.trim()) {
+      showFeedback("Please enter a video title.", true);
+      return;
+    }
+    if (!pmYoutubeUrl.trim()) {
+      showFeedback("Please enter a YouTube video URL or ID.", true);
+      return;
+    }
+
+    setSyncing(true);
+    try {
+      // 1. Ensure target playlist exists in Firestore
+      const targetPlaylistExists = playlists.some(p => p.id === pmPlaylistSelection);
+      if (!targetPlaylistExists) {
+        const title = pmPlaylistSelection === "class-10-free-batch" ? "Class 10th Free Batch" : "Class 12th Free Batch";
+        const level = pmPlaylistSelection === "class-10-free-batch" ? "Class 10" : "Class 12";
+        const desc = pmPlaylistSelection === "class-10-free-batch"
+          ? "All-in-one free coaching batch designed for Class 10th boards preparation and fundamental concepts covering Math, Science & more."
+          : "Comprehensive free batch covering Class 12th board syllabus, advanced board exams concepts and exercises with Suraj Sir.";
+        const thumb = pmPlaylistSelection === "class-10-free-batch"
+          ? "https://images.unsplash.com/photo-1532187863486-abf9d39d66e8?auto=format&fit=crop&q=80&w=400"
+          : "https://images.unsplash.com/photo-1614064641938-3bbee52942c7?auto=format&fit=crop&q=80&w=400";
+        
+        await createPlaylistInDb({
+          id: pmPlaylistSelection,
+          title,
+          description: desc,
+          thumbnail: thumb,
+          classLevel: level,
+          videos: []
+        });
+      }
+
+      const embedCode = getYoutubeId(pmYoutubeUrl);
+      const videoData = {
+        title: pmVideoTitle,
+        duration: "25:00",
+        embedCode,
+        description: pmVideoDescription,
+        videoUrl: pmThumbnailUrl
+      };
+
+      if (pmEditingVideoId) {
+        if (pmOriginalPlaylistId && pmOriginalPlaylistId !== pmPlaylistSelection) {
+          // Playlist changed, so delete from old and insert to new
+          await deleteVideo(pmOriginalPlaylistId, pmEditingVideoId);
+          await createVideo(pmPlaylistSelection, { ...videoData, id: pmEditingVideoId });
+        } else {
+          await updateVideo(pmPlaylistSelection, pmEditingVideoId, videoData);
+        }
+        showFeedback("Lecture video updated successfully inside Firestore!");
+      } else {
+        await createVideo(pmPlaylistSelection, videoData);
+        showFeedback("New lecture video saved successfully inside Firestore!");
+      }
+
+      // Reset form
+      setPmVideoTitle("");
+      setPmYoutubeUrl("");
+      setPmVideoDescription("");
+      setPmThumbnailUrl("");
+      setPmEditingVideoId(null);
+      setPmOriginalPlaylistId(null);
+
+      // Refresh data
+      await fetchAllData();
+    } catch (err: any) {
+      showFeedback(err.message || "Failed to save video to Firestore", true);
+    } finally {
+      setSyncing(false);
+    }
+  };
+
+  const handlePmEditVideo = (playlistId: string, vid: any) => {
+    setPmPlaylistSelection(playlistId);
+    setPmVideoTitle(vid.title);
+    setPmYoutubeUrl(vid.embedCode ? `https://www.youtube.com/watch?v=${vid.embedCode}` : "");
+    setPmVideoDescription(vid.description || "");
+    setPmThumbnailUrl(vid.videoUrl || "");
+    setPmEditingVideoId(vid.id);
+    setPmOriginalPlaylistId(playlistId);
+    showFeedback("Video loaded into editor form.");
+  };
+
+  const handlePmDeleteVideo = async (playlistId: string, videoId: string) => {
+    if (!window.confirm("Are you sure you want to permanently delete this video?")) return;
+    setSyncing(true);
+    try {
+      await deleteVideo(playlistId, videoId);
+      showFeedback("Video deleted successfully from Firestore!");
+      await fetchAllData();
+    } catch (err: any) {
+      showFeedback(err.message || "Failed to delete video", true);
+    } finally {
+      setSyncing(false);
+    }
+  };
+
+  const handlePmCancelEdit = () => {
+    setPmVideoTitle("");
+    setPmYoutubeUrl("");
+    setPmVideoDescription("");
+    setPmThumbnailUrl("");
+    setPmEditingVideoId(null);
+    setPmOriginalPlaylistId(null);
+    showFeedback("Edit cleared.");
+  };
+
+  // ==========================================
   // BOOK CRUD HANDLERS
   // ==========================================
   const handleOpenBookModal = (bk: Book | null = null) => {
@@ -577,6 +713,7 @@ export default function AdminDashboard({ email, onLogout }: AdminDashboardProps)
   const menuItems = [
     { id: "overview", label: "Dashboard Hub", icon: LayoutDashboard },
     { id: "playlists", label: "Playlists & Lectures", icon: Layers },
+    { id: "playlist-management", label: "Playlist Management", icon: Settings },
     { id: "books", label: "Reference Books", icon: BookOpen },
     { id: "tests", label: "Mock Test Sheets", icon: Award },
     { id: "payments", label: "UPI Course Payments", icon: DollarSign },
@@ -587,24 +724,21 @@ export default function AdminDashboard({ email, onLogout }: AdminDashboardProps)
   // CORE LAYOUT RENDERS
   // ==========================================
 
-  if (loading) {
-    return (
-      <div className="min-h-screen flex flex-col justify-center items-center bg-slate-50 space-y-4">
-        <div className="w-12 h-12 border-4 border-amber-200 border-t-accent-gold rounded-full animate-spin" />
-        <p className="text-sm font-semibold text-gray-500">Retrieving system diagnostics & academic databases...</p>
-      </div>
-    );
-  }
-
   return (
     <div className="min-h-screen bg-slate-50 text-navy-900 flex flex-col lg:flex-row relative">
       
       {/* 1. MOBILE DRAWER TRIGGER */}
       <div className="lg:hidden bg-navy-950 text-white flex justify-between items-center px-4 py-3 border-b border-white/5 sticky top-0 z-40">
         <div className="flex items-center gap-2">
-          <div className="w-8 h-8 rounded-lg bg-gradient-to-tr from-primary-600 to-accent-gold flex items-center justify-center font-bold text-white text-base">
-            A
-          </div>
+          {onGoHome && (
+            <button 
+              onClick={onGoHome} 
+              className="w-8 h-8 rounded-lg bg-white/5 flex items-center justify-center text-accent-gold hover:bg-white/10 transition cursor-pointer"
+              title="Go Home"
+            >
+              <Home className="w-4 h-4" />
+            </button>
+          )}
           <span className="font-display font-extrabold text-sm tracking-tight">SURAJ SIR ADMIN</span>
         </div>
         <button
@@ -640,6 +774,15 @@ export default function AdminDashboard({ email, onLogout }: AdminDashboardProps)
 
           {/* Navigation Links list */}
           <nav className="space-y-1.5 flex-1 overflow-y-auto">
+            {onGoHome && (
+              <button
+                onClick={onGoHome}
+                className="w-full flex items-center gap-3 p-3 mb-2 rounded-xl text-xs font-bold tracking-wide transition-all text-accent-gold bg-white/5 border border-accent-gold/20 hover:bg-accent-gold/10 cursor-pointer"
+              >
+                <Home className="w-4 h-4" />
+                <span>Return to Main Home</span>
+              </button>
+            )}
             {menuItems.map((item) => {
               const Icon = item.icon;
               const isActive = activeTab === item.id;
@@ -687,10 +830,10 @@ export default function AdminDashboard({ email, onLogout }: AdminDashboardProps)
             
             <button
               onClick={onLogout}
-              className="w-full flex items-center justify-center gap-2 py-3 bg-red-500/10 hover:bg-red-500/20 text-red-400 rounded-xl text-xs sm:text-sm font-bold border border-red-500/20 transition cursor-pointer"
+              className="w-full flex items-center justify-center gap-2 py-3 bg-primary-600/10 hover:bg-primary-600/20 text-primary-400 rounded-xl text-xs sm:text-sm font-bold border border-primary-500/20 transition cursor-pointer"
             >
-              <LogOut className="w-4 h-4" />
-              <span>Terminate Session</span>
+              <GraduationCap className="w-4 h-4 text-primary-400" />
+              <span>Switch to Student Console</span>
             </button>
           </div>
 
@@ -975,6 +1118,227 @@ export default function AdminDashboard({ email, onLogout }: AdminDashboardProps)
                   </div>
                 </div>
               ))}
+            </div>
+          </div>
+        )}
+
+        {/* PLAYLIST MANAGEMENT TAB */}
+        {activeTab === "playlist-management" && (
+          <div className="space-y-8 animate-fadeIn">
+            {/* Header */}
+            <div>
+              <h2 className="font-display text-xl sm:text-2xl font-extrabold text-navy-950">Playlist Management</h2>
+              <p className="text-xs text-gray-500">Manage video lectures for the free Class 10th and Class 12th coaching batches.</p>
+            </div>
+
+            {/* Split layout: Form on Left, Saved Videos List on Right */}
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
+              
+              {/* Form Container (5/12 columns) */}
+              <div className="lg:col-span-5 bg-white border border-gray-100 rounded-3xl p-6 shadow-sm space-y-6">
+                <div>
+                  <h3 className="font-display font-bold text-sm text-navy-950 uppercase tracking-wider flex items-center gap-2">
+                    <Settings className="w-4 h-4 text-accent-gold" />
+                    {pmEditingVideoId ? "Edit Lecture Video" : "Add Lecture Video"}
+                  </h3>
+                  <p className="text-xs text-gray-400 mt-1">Fill in the fields below to register or update a video inside Firebase Firestore.</p>
+                </div>
+
+                <form onSubmit={handlePmSaveVideo} className="space-y-4">
+                  {/* Playlist Selection */}
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-bold text-gray-600 block">Playlist Selection *</label>
+                    <select
+                      value={pmPlaylistSelection}
+                      onChange={(e) => setPmPlaylistSelection(e.target.value)}
+                      className="w-full px-4 py-2.5 bg-slate-50 border border-gray-200 rounded-xl text-xs sm:text-sm text-navy-900 focus:outline-none focus:border-accent-gold/40 cursor-pointer"
+                    >
+                      <option value="class-10-free-batch">Class 10th Free Batch</option>
+                      <option value="class-12-free-batch">Class 12th Free Batch</option>
+                    </select>
+                  </div>
+
+                  {/* Video Title */}
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-bold text-gray-600 block">Video Title *</label>
+                    <input
+                      type="text"
+                      placeholder="e.g. Real Numbers & Arithmetic Progression"
+                      value={pmVideoTitle}
+                      onChange={(e) => setPmVideoTitle(e.target.value)}
+                      required
+                      className="w-full px-4 py-2.5 bg-slate-50 border border-gray-200 rounded-xl text-xs sm:text-sm text-navy-900 placeholder:text-gray-400 focus:outline-none focus:border-accent-gold/40"
+                    />
+                  </div>
+
+                  {/* YouTube Video URL */}
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-bold text-gray-600 block">YouTube Video URL *</label>
+                    <input
+                      type="text"
+                      placeholder="e.g. https://www.youtube.com/watch?v=dQw4w9WgXcQ"
+                      value={pmYoutubeUrl}
+                      onChange={(e) => setPmYoutubeUrl(e.target.value)}
+                      required
+                      className="w-full px-4 py-2.5 bg-slate-50 border border-gray-200 rounded-xl text-xs sm:text-sm text-navy-900 placeholder:text-gray-400 focus:outline-none focus:border-accent-gold/40"
+                    />
+                  </div>
+
+                  {/* Video Description (Optional) */}
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-bold text-gray-600 block">Video Description (Optional)</label>
+                    <textarea
+                      placeholder="e.g. Chapter 1 full explanation, exercises, board solutions."
+                      value={pmVideoDescription}
+                      onChange={(e) => setPmVideoDescription(e.target.value)}
+                      rows={3}
+                      className="w-full px-4 py-2.5 bg-slate-50 border border-gray-200 rounded-xl text-xs sm:text-sm text-navy-900 placeholder:text-gray-400 focus:outline-none focus:border-accent-gold/40 resize-none"
+                    />
+                  </div>
+
+                  {/* Thumbnail URL (Optional) */}
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-bold text-gray-600 block">Thumbnail URL (Optional)</label>
+                    <input
+                      type="text"
+                      placeholder="e.g. https://images.unsplash.com/... or base64 image data"
+                      value={pmThumbnailUrl}
+                      onChange={(e) => setPmThumbnailUrl(e.target.value)}
+                      className="w-full px-4 py-2.5 bg-slate-50 border border-gray-200 rounded-xl text-xs sm:text-sm text-navy-900 placeholder:text-gray-400 focus:outline-none focus:border-accent-gold/40"
+                    />
+                  </div>
+
+                  {/* Buttons */}
+                  <div className="flex gap-2.5 pt-2">
+                    <button
+                      type="submit"
+                      disabled={syncing}
+                      className="flex-1 py-2.5 px-4 rounded-xl bg-primary-600 hover:bg-primary-700 text-white text-xs sm:text-sm font-bold flex items-center justify-center gap-1.5 shadow-sm transition-all cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      <Check className="w-4 h-4" />
+                      <span>{pmEditingVideoId ? "Update Video" : "Save Video"}</span>
+                    </button>
+                    {pmEditingVideoId && (
+                      <button
+                        type="button"
+                        onClick={handlePmCancelEdit}
+                        className="py-2.5 px-4 rounded-xl bg-slate-100 hover:bg-slate-200 text-gray-700 text-xs sm:text-sm font-bold flex items-center justify-center gap-1.5 transition-all cursor-pointer"
+                      >
+                        <X className="w-4 h-4" />
+                        <span>Cancel</span>
+                      </button>
+                    )}
+                  </div>
+                </form>
+              </div>
+
+              {/* Organized Videos List Container (7/12 columns) */}
+              <div className="lg:col-span-7 space-y-6">
+                
+                {/* Playlist 1: Class 10th Free Batch */}
+                <div className="bg-white border border-gray-100 rounded-3xl p-6 shadow-sm space-y-4">
+                  <div className="flex justify-between items-center pb-2 border-b border-gray-50">
+                    <div className="flex items-center gap-2">
+                      <div className="w-2.5 h-2.5 rounded-full bg-purple-500" />
+                      <h3 className="font-display font-extrabold text-sm sm:text-base text-navy-950">
+                        Class 10th Free Batch Videos
+                      </h3>
+                    </div>
+                    <span className="px-2.5 py-0.5 rounded-full bg-purple-50 text-purple-600 text-[10px] font-bold border border-purple-100">
+                      {(playlists.find(p => p.id === "class-10-free-batch")?.videos?.length || 0)} Lectures
+                    </span>
+                  </div>
+
+                  <div className="space-y-3 max-h-[300px] overflow-y-auto pr-1">
+                    {!(playlists.find(p => p.id === "class-10-free-batch")?.videos?.length) ? (
+                      <p className="text-xs text-gray-400 italic py-4 text-center">No video lectures registered yet under Class 10th Free Batch.</p>
+                    ) : (
+                      playlists.find(p => p.id === "class-10-free-batch")?.videos?.map((vid) => (
+                        <div key={vid.id} className="p-3 bg-slate-50 border border-gray-100 rounded-xl flex justify-between items-center gap-4 hover:border-purple-200 transition">
+                          <div className="space-y-1 min-w-0 flex-1">
+                            <h4 className="text-xs sm:text-sm font-bold text-navy-950 truncate">{vid.title}</h4>
+                            <p className="text-[11px] text-gray-400 line-clamp-1">{vid.description || "No description provided."}</p>
+                            <div className="flex items-center gap-2 text-[10px] text-gray-400">
+                              <span className="font-mono bg-white px-1.5 py-0.5 rounded border border-gray-200 text-gray-500 truncate">
+                                YouTube: {vid.embedCode}
+                              </span>
+                            </div>
+                          </div>
+                          <div className="flex gap-1.5 shrink-0">
+                            <button
+                              onClick={() => handlePmEditVideo("class-10-free-batch", vid)}
+                              className="p-1.5 bg-white border border-gray-200 hover:bg-slate-100 rounded-lg text-gray-600 transition cursor-pointer"
+                              title="Edit Video"
+                            >
+                              <Edit className="w-3.5 h-3.5" />
+                            </button>
+                            <button
+                              onClick={() => handlePmDeleteVideo("class-10-free-batch", vid.id)}
+                              className="p-1.5 bg-red-50 border border-red-100 hover:bg-red-100 rounded-lg text-red-600 transition cursor-pointer"
+                              title="Delete Video"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                </div>
+
+                {/* Playlist 2: Class 12th Free Batch */}
+                <div className="bg-white border border-gray-100 rounded-3xl p-6 shadow-sm space-y-4">
+                  <div className="flex justify-between items-center pb-2 border-b border-gray-50">
+                    <div className="flex items-center gap-2">
+                      <div className="w-2.5 h-2.5 rounded-full bg-blue-500" />
+                      <h3 className="font-display font-extrabold text-sm sm:text-base text-navy-950">
+                        Class 12th Free Batch Videos
+                      </h3>
+                    </div>
+                    <span className="px-2.5 py-0.5 rounded-full bg-blue-50 text-blue-600 text-[10px] font-bold border border-blue-100">
+                      {(playlists.find(p => p.id === "class-12-free-batch")?.videos?.length || 0)} Lectures
+                    </span>
+                  </div>
+
+                  <div className="space-y-3 max-h-[300px] overflow-y-auto pr-1">
+                    {!(playlists.find(p => p.id === "class-12-free-batch")?.videos?.length) ? (
+                      <p className="text-xs text-gray-400 italic py-4 text-center">No video lectures registered yet under Class 12th Free Batch.</p>
+                    ) : (
+                      playlists.find(p => p.id === "class-12-free-batch")?.videos?.map((vid) => (
+                        <div key={vid.id} className="p-3 bg-slate-50 border border-gray-100 rounded-xl flex justify-between items-center gap-4 hover:border-blue-200 transition">
+                          <div className="space-y-1 min-w-0 flex-1">
+                            <h4 className="text-xs sm:text-sm font-bold text-navy-950 truncate">{vid.title}</h4>
+                            <p className="text-[11px] text-gray-400 line-clamp-1">{vid.description || "No description provided."}</p>
+                            <div className="flex items-center gap-2 text-[10px] text-gray-400">
+                              <span className="font-mono bg-white px-1.5 py-0.5 rounded border border-gray-200 text-gray-500 truncate">
+                                YouTube: {vid.embedCode}
+                              </span>
+                            </div>
+                          </div>
+                          <div className="flex gap-1.5 shrink-0">
+                            <button
+                              onClick={() => handlePmEditVideo("class-12-free-batch", vid)}
+                              className="p-1.5 bg-white border border-gray-200 hover:bg-slate-100 rounded-lg text-gray-600 transition cursor-pointer"
+                              title="Edit Video"
+                            >
+                              <Edit className="w-3.5 h-3.5" />
+                            </button>
+                            <button
+                              onClick={() => handlePmDeleteVideo("class-12-free-batch", vid.id)}
+                              className="p-1.5 bg-red-50 border border-red-100 hover:bg-red-100 rounded-lg text-red-600 transition cursor-pointer"
+                              title="Delete Video"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                </div>
+
+              </div>
+
             </div>
           </div>
         )}

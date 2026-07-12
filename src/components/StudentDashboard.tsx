@@ -6,7 +6,6 @@ import {
   BookOpen, 
   Award, 
   User, 
-  LogOut, 
   Menu, 
   X, 
   Bell, 
@@ -16,7 +15,8 @@ import {
   CheckCircle2,
   Sparkles,
   Layers,
-  ChevronRight
+  ChevronRight,
+  ShieldCheck
 } from "lucide-react";
 
 import { StudentProfile } from "../types";
@@ -30,9 +30,10 @@ import { getStudentProfile, createOrUpdateStudentProfileOnLogin, updateStudentPr
 interface StudentDashboardProps {
   email: string;
   onLogout: () => void;
+  onGoHome?: () => void;
 }
 
-export default function StudentDashboard({ email, onLogout }: StudentDashboardProps) {
+export default function StudentDashboard({ email, onLogout, onGoHome }: StudentDashboardProps) {
   // Navigation tabs
   const [activeTab, setActiveTab] = useState<string>("home");
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -109,7 +110,7 @@ export default function StudentDashboard({ email, onLogout }: StudentDashboardPr
       case "home":
         return <HomeTab profile={profile} onNavigateToTab={(tab) => setActiveTab(tab)} />;
       case "videos":
-        return <VideosTab />;
+        return <VideosTab onGoHome={onGoHome} />;
       case "books":
         return <BooksTab email={profile.email} />;
       case "tests":
@@ -129,9 +130,15 @@ export default function StudentDashboard({ email, onLogout }: StudentDashboardPr
       {/* Mobile Drawer Trigger Bar */}
       <div className="lg:hidden bg-navy-950 text-white flex justify-between items-center px-4 py-3 border-b border-white/5 sticky top-0 z-40">
         <div className="flex items-center gap-2">
-          <div className="w-8 h-8 rounded-lg bg-gradient-to-tr from-primary-600 to-accent-gold flex items-center justify-center font-bold text-white text-base">
-            S
-          </div>
+          {onGoHome && (
+            <button 
+              onClick={onGoHome} 
+              className="w-8 h-8 rounded-lg bg-white/5 flex items-center justify-center text-accent-gold hover:bg-white/10 transition cursor-pointer"
+              title="Go Home"
+            >
+              <Home className="w-4 h-4" />
+            </button>
+          )}
           <span className="font-display font-extrabold text-sm tracking-tight">SURAJ SIR CAMPUS</span>
         </div>
         <div className="flex items-center gap-2">
@@ -178,6 +185,15 @@ export default function StudentDashboard({ email, onLogout }: StudentDashboardPr
 
           {/* Navigation Links list */}
           <nav className="space-y-1.5 flex-1 overflow-y-auto">
+            {onGoHome && (
+              <button
+                onClick={onGoHome}
+                className="w-full flex items-center gap-3 p-3 mb-2 rounded-xl text-xs font-bold tracking-wide transition-all text-accent-gold bg-white/5 border border-accent-gold/20 hover:bg-accent-gold/10 cursor-pointer"
+              >
+                <Home className="w-4 h-4" />
+                <span>Return to Main Home</span>
+              </button>
+            )}
             {navItems.map((item) => {
               const Icon = item.icon;
               const isActive = activeTab === item.id;
@@ -232,14 +248,14 @@ export default function StudentDashboard({ email, onLogout }: StudentDashboardPr
           </div>
         </div>
 
-        {/* Logout action bottom bar */}
+        {/* Switch dashboard mode bottom bar */}
         <div className="pt-4 mt-4 border-t border-white/10">
           <button
             onClick={onLogout}
-            className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl border border-white/10 hover:bg-red-500/10 hover:border-red-500/20 hover:text-red-400 transition text-xs font-bold text-gray-400 cursor-pointer"
+            className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl border border-white/10 hover:bg-amber-500/10 hover:border-amber-500/20 hover:text-amber-400 transition text-xs font-bold text-gray-400 cursor-pointer"
           >
-            <LogOut className="w-4.5 h-4.5" />
-            <span>Sign Out Terminal</span>
+            <ShieldCheck className="w-4.5 h-4.5 text-accent-gold" />
+            <span>Switch to Admin Control</span>
           </button>
         </div>
       </aside>
@@ -260,6 +276,17 @@ export default function StudentDashboard({ email, onLogout }: StudentDashboardPr
           
           {/* Breadcrumb search block */}
           <div className="flex items-center gap-4">
+            {onGoHome && (
+              <button
+                onClick={onGoHome}
+                className="inline-flex items-center gap-1.5 py-1.5 px-3 rounded-lg border border-gray-200 bg-white hover:bg-slate-50 text-xs font-bold text-navy-900 shadow-sm active:scale-95 transition cursor-pointer"
+                title="Return to Main Home"
+              >
+                <Home className="w-3.5 h-3.5 text-primary-600" />
+                <span>Main Home</span>
+              </button>
+            )}
+            <span className="text-gray-200">|</span>
             <span className="text-xs font-bold text-gray-400">BATCH CAMPUS</span>
             <span className="text-gray-200">|</span>
             <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-primary-50 border border-primary-100 text-xs text-primary-800 font-medium">
