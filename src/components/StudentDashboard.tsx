@@ -110,7 +110,7 @@ export default function StudentDashboard({ email, onLogout, onGoHome }: StudentD
       case "home":
         return <HomeTab profile={profile} onNavigateToTab={(tab) => setActiveTab(tab)} />;
       case "videos":
-        return <VideosTab onGoHome={onGoHome} />;
+        return <VideosTab email={profile.email} onGoHome={onGoHome} />;
       case "books":
         return <BooksTab email={profile.email} />;
       case "tests":

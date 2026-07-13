@@ -83,10 +83,13 @@ const getYoutubeVideoId = (vid: Video | string): string => {
 };
 
 interface VideosTabProps {
+  email?: string;
   onGoHome?: () => void;
 }
 
-export default function VideosTab({ onGoHome }: VideosTabProps) {
+export default function VideosTab({ email, onGoHome }: VideosTabProps) {
+  const studentEmail = email || localStorage.getItem("email") || localStorage.getItem("userEmail") || "student@surajsir.com";
+
   const [playlists, setPlaylists] = useState<(Playlist & { locked?: boolean })[]>(() => {
     try {
       const cached = localStorage.getItem("cached_playlists_data");
@@ -145,8 +148,6 @@ export default function VideosTab({ onGoHome }: VideosTabProps) {
   const [myPaymentRequests, setMyPaymentRequests] = useState<PaymentRequest[]>([]);
 
   useEffect(() => {
-    const email = localStorage.getItem("userEmail") || "guest@educationportal.com";
-    
     setLoading(true);
     setError("");
 
@@ -157,63 +158,79 @@ export default function VideosTab({ onGoHome }: VideosTabProps) {
         try {
           const dbPlaylists = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as any[];
           
-          const class10Db = dbPlaylists.find(p => p.id === "class-10-free-batch");
-          const class12Db = dbPlaylists.find(p => p.id === "class-12-free-batch");
+          getPurchases(studentEmail).then((purchasesObj) => {
+            const mappedPlaylists = dbPlaylists.map(pl => {
+              const id = pl.id;
+              const isFree = id === "class-10-free-batch" || id === "class-12-free-batch";
+              const classLevel = pl.classLevel || "Class 12";
+              // It's locked if it's not a free batch AND the user has not purchased this class level
+              const isLocked = !isFree && !purchasesObj[classLevel as "Class 10" | "Class 12"];
+              
+              return {
+                id: pl.id,
+                title: pl.title || "",
+                thumbnail: pl.thumbnail || "https://images.unsplash.com/photo-1614064641938-3bbee52942c7?auto=format&fit=crop&q=80&w=400",
+                videoCount: pl.videos ? pl.videos.length : 0,
+                description: pl.description || "",
+                classLevel: classLevel,
+                videos: pl.videos || [],
+                locked: isLocked
+              };
+            });
 
-          const finalPlaylistsList = [
-            {
-              id: "class-10-free-batch",
-              title: class10Db?.title || "Class 10th Free Batch",
-              thumbnail: class10Db?.thumbnail || "https://images.unsplash.com/photo-1532187863486-abf9d39d66e8?auto=format&fit=crop&q=80&w=400",
-              videoCount: class10Db ? (class10Db.videos?.length || 0) : 0,
-              description: class10Db?.description || "All-in-one free coaching batch designed for Class 10th boards preparation and fundamental concepts covering Math, Science & more.",
-              classLevel: class10Db?.classLevel || "Class 10",
-              videos: class10Db ? (class10Db.videos || []) : [],
-              locked: false
-            },
-            {
-              id: "class-12-free-batch",
-              title: class12Db?.title || "Class 12th Free Batch",
-              thumbnail: class12Db?.thumbnail || "https://images.unsplash.com/photo-1614064641938-3bbee52942c7?auto=format&fit=crop&q=80&w=400",
-              videoCount: class12Db ? (class12Db.videos?.length || 0) : 0,
-              description: class12Db?.description || "Comprehensive free batch covering Class 12th board syllabus, advanced board exams concepts and exercises with Suraj Sir.",
-              classLevel: class12Db?.classLevel || "Class 12",
-              videos: class12Db ? (class12Db.videos || []) : [],
-              locked: false
+            // Sort playlists so free batches appear first
+            mappedPlaylists.sort((a, b) => {
+              const aFree = a.id === "class-10-free-batch" || a.id === "class-12-free-batch";
+              const bFree = b.id === "class-10-free-batch" || b.id === "class-12-free-batch";
+              if (aFree && !bFree) return -1;
+              if (!aFree && bFree) return 1;
+              return a.title.localeCompare(b.title);
+            });
+
+            setPlaylists(mappedPlaylists);
+            
+            // Auto-sync selected playlist structure when updated
+            setSelectedPlaylist(prevSelected => {
+              if (!prevSelected) return null;
+              const updatedSelected = mappedPlaylists.find(p => p.id === prevSelected.id);
+              if (updatedSelected) {
+                setCurrentVideo(prevVid => {
+                  if (!prevVid) return null;
+                  const updatedVid = updatedSelected.videos.find(v => v.id === prevVid.id);
+                  return updatedVid || prevVid;
+                });
+                return updatedSelected;
+              }
+              return prevSelected;
+            });
+
+            // Store in cache for instant future loads
+            try {
+              localStorage.setItem("cached_playlists_data", JSON.stringify(mappedPlaylists));
+            } catch (e) {
+              // Ignore
             }
-          ];
-
-          setPlaylists(finalPlaylistsList);
-          
-          // Auto-sync selected playlist structure when updated
-          setSelectedPlaylist(prevSelected => {
-            if (!prevSelected) return null;
-            const updatedSelected = finalPlaylistsList.find(p => p.id === prevSelected.id);
-            if (updatedSelected) {
-              setCurrentVideo(prevVid => {
-                if (!prevVid) return null;
-                const updatedVid = updatedSelected.videos.find(v => v.id === prevVid.id);
-                return updatedVid || prevVid;
-              });
-              return updatedSelected;
-            }
-            return prevSelected;
-          });
-
-          // Store in cache for instant future loads
-          try {
-            localStorage.setItem("cached_playlists_data", JSON.stringify(finalPlaylistsList));
-          } catch (e) {
-            // Ignore
-          }
-          
-          setLoading(false);
-
-          // Background thread update for any purchase locked state
-          getPurchases(email).then((purchasesObj) => {
-            // Updates completed in background if needed in future
+            
+            setLoading(false);
           }).catch(err => {
             console.error("Background purchases fetch failed:", err);
+            // Fallback: free batches are unlocked, others are locked
+            const fallbackPlaylists = dbPlaylists.map(pl => {
+              const id = pl.id;
+              const isFree = id === "class-10-free-batch" || id === "class-12-free-batch";
+              return {
+                id: pl.id,
+                title: pl.title || "",
+                thumbnail: pl.thumbnail || "https://images.unsplash.com/photo-1614064641938-3bbee52942c7?auto=format&fit=crop&q=80&w=400",
+                videoCount: pl.videos ? pl.videos.length : 0,
+                description: pl.description || "",
+                classLevel: pl.classLevel || "Class 12",
+                videos: pl.videos || [],
+                locked: !isFree
+              };
+            });
+            setPlaylists(fallbackPlaylists);
+            setLoading(false);
           });
         } catch (err: any) {
           setError(err.message || "An unexpected error occurred during real-time sync.");
@@ -231,17 +248,41 @@ export default function VideosTab({ onGoHome }: VideosTabProps) {
     return () => {
       unsubscribe();
     };
-  }, []);
+  }, [studentEmail]);
 
   const fetchPlaylists = async () => {
-    // Managed by real-time subscription
+    // Manually force-recheck purchases state and update playlists locking state
+    try {
+      const purchasesObj = await getPurchases(studentEmail);
+      setPlaylists(prevPlaylists => {
+        const updated = prevPlaylists.map(pl => {
+          const isFree = pl.id === "class-10-free-batch" || pl.id === "class-12-free-batch";
+          const classLevel = pl.classLevel || "Class 12";
+          const isLocked = !isFree && !purchasesObj[classLevel as "Class 10" | "Class 12"];
+          return {
+            ...pl,
+            locked: isLocked
+          };
+        });
+        
+        // Also update selected playlist
+        setSelectedPlaylist(prevSelected => {
+          if (!prevSelected) return null;
+          const updatedSelected = updated.find(p => p.id === prevSelected.id);
+          return updatedSelected || prevSelected;
+        });
+
+        return updated;
+      });
+    } catch (err) {
+      console.error("Manual fetchPlaylists purchases recheck failed:", err);
+    }
   };
 
   const fetchMyPaymentRequests = async () => {
     try {
-      const email = localStorage.getItem("userEmail");
-      if (!email) return;
-      const data = await getPaymentRequests(email);
+      if (!studentEmail) return;
+      const data = await getPaymentRequests(studentEmail);
       setMyPaymentRequests(data);
     } catch (err) {
       console.error("Failed to sync my payment requests:", err);
@@ -356,7 +397,7 @@ export default function VideosTab({ onGoHome }: VideosTabProps) {
     setPaymentSubmitting(true);
     setPaymentError("");
     try {
-      const email = localStorage.getItem("userEmail") || "student@surajsir.com";
+      const email = studentEmail;
       const studentName = localStorage.getItem("userName") || email.split("@")[0];
       
       await createPaymentRequest(
