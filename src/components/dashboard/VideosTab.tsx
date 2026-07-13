@@ -3,6 +3,8 @@ import { motion, AnimatePresence } from "motion/react";
 import { 
   Play, 
   ArrowLeft, 
+  ArrowRight,
+  BookOpen,
   Clock, 
   Layers, 
   CheckCircle2, 
@@ -29,13 +31,45 @@ interface VideosTabProps {
 }
 
 export default function VideosTab({ onGoHome }: VideosTabProps) {
-  const [playlists, setPlaylists] = useState<(Playlist & { locked?: boolean })[]>([]);
+  const [playlists, setPlaylists] = useState<(Playlist & { locked?: boolean })[]>(() => {
+    try {
+      const cached = localStorage.getItem("cached_playlists_data");
+      if (cached) {
+        return JSON.parse(cached);
+      }
+    } catch (e) {
+      // Ignore
+    }
+    return [
+      {
+        id: "class-10-free-batch",
+        title: "Class 10th Free Batch",
+        thumbnail: "https://images.unsplash.com/photo-1532187863486-abf9d39d66e8?auto=format&fit=crop&q=80&w=400",
+        videoCount: 0,
+        description: "All-in-one free coaching batch designed for Class 10th boards preparation and fundamental concepts covering Math, Science & more.",
+        classLevel: "Class 10",
+        videos: [],
+        locked: false
+      },
+      {
+        id: "class-12-free-batch",
+        title: "Class 12th Free Batch",
+        thumbnail: "https://images.unsplash.com/photo-1614064641938-3bbee52942c7?auto=format&fit=crop&q=80&w=400",
+        videoCount: 0,
+        description: "Comprehensive free batch covering Class 12th board syllabus, advanced board exams concepts and exercises with Suraj Sir.",
+        classLevel: "Class 12",
+        videos: [],
+        locked: false
+      }
+    ];
+  });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [purchasing, setPurchasing] = useState(false);
   
   // Navigation states
   const [selectedPlaylist, setSelectedPlaylist] = useState<(Playlist & { locked?: boolean }) | null>(null);
+  const [selectedSubject, setSelectedSubject] = useState<"Science" | "Mathematics" | null>(null);
   const [currentVideo, setCurrentVideo] = useState<Video | null>(null);
 
   // QR Code Payment Flow states
@@ -63,69 +97,36 @@ export default function VideosTab({ onGoHome }: VideosTabProps) {
     // Real-time listener on "playlists" collection
     const unsubscribe = onSnapshot(
       collection(db, "playlists"),
-      async (snapshot) => {
+      (snapshot) => {
         try {
           const dbPlaylists = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as any[];
           
-          const purchasesObj = await getPurchases(email);
-          const hasClass10 = purchasesObj["Class 10"];
-          const hasClass12 = purchasesObj["Class 12"];
-          
-          // Map all playlists from Firestore
-          const mappedPlaylists = dbPlaylists.map(pl => {
-            const level = pl.classLevel || "Class 12";
-            let isPurchased = false;
-            if (level === "Class 10" || level === "10th") isPurchased = hasClass10;
-            else if (level === "Class 12" || level === "12th") isPurchased = hasClass12;
-            
-            // Free batches are always unlocked, others based on purchase
-            const isFreeBatch = pl.id === "class-10-free-batch" || pl.id === "class-12-free-batch" || pl.id.includes("free-batch");
-            const locked = isFreeBatch ? false : !isPurchased;
-
-            return {
-              ...pl,
-              locked
-            };
-          });
-
-          const class10Db = mappedPlaylists.find(p => p.id === "class-10-free-batch");
-          const class12Db = mappedPlaylists.find(p => p.id === "class-12-free-batch");
+          const class10Db = dbPlaylists.find(p => p.id === "class-10-free-batch");
+          const class12Db = dbPlaylists.find(p => p.id === "class-12-free-batch");
 
           const finalPlaylistsList = [
             {
               id: "class-10-free-batch",
               title: class10Db?.title || "Class 10th Free Batch",
               thumbnail: class10Db?.thumbnail || "https://images.unsplash.com/photo-1532187863486-abf9d39d66e8?auto=format&fit=crop&q=80&w=400",
-              videoCount: class10Db ? class10Db.videos.length : 0,
+              videoCount: class10Db ? (class10Db.videos?.length || 0) : 0,
               description: class10Db?.description || "All-in-one free coaching batch designed for Class 10th boards preparation and fundamental concepts covering Math, Science & more.",
               classLevel: class10Db?.classLevel || "Class 10",
-              videos: class10Db ? class10Db.videos : [],
+              videos: class10Db ? (class10Db.videos || []) : [],
               locked: false
             },
             {
               id: "class-12-free-batch",
               title: class12Db?.title || "Class 12th Free Batch",
               thumbnail: class12Db?.thumbnail || "https://images.unsplash.com/photo-1614064641938-3bbee52942c7?auto=format&fit=crop&q=80&w=400",
-              videoCount: class12Db ? class12Db.videos.length : 0,
+              videoCount: class12Db ? (class12Db.videos?.length || 0) : 0,
               description: class12Db?.description || "Comprehensive free batch covering Class 12th board syllabus, advanced board exams concepts and exercises with Suraj Sir.",
               classLevel: class12Db?.classLevel || "Class 12",
-              videos: class12Db ? class12Db.videos : [],
+              videos: class12Db ? (class12Db.videos || []) : [],
               locked: false
             }
           ];
 
-          // If there are other playlists in mappedPlaylists, append them to finalPlaylistsList
-          mappedPlaylists.forEach(pl => {
-            if (pl.id !== "class-10-free-batch" && pl.id !== "class-12-free-batch") {
-              finalPlaylistsList.push({
-                ...pl,
-                videoCount: pl.videos ? pl.videos.length : 0,
-                videos: pl.videos || [],
-                locked: pl.locked !== undefined ? pl.locked : true
-              });
-            }
-          });
-          
           setPlaylists(finalPlaylistsList);
           
           // Auto-sync selected playlist structure when updated
@@ -142,8 +143,22 @@ export default function VideosTab({ onGoHome }: VideosTabProps) {
             }
             return prevSelected;
           });
+
+          // Store in cache for instant future loads
+          try {
+            localStorage.setItem("cached_playlists_data", JSON.stringify(finalPlaylistsList));
+          } catch (e) {
+            // Ignore
+          }
           
           setLoading(false);
+
+          // Background thread update for any purchase locked state
+          getPurchases(email).then((purchasesObj) => {
+            // Updates completed in background if needed in future
+          }).catch(err => {
+            console.error("Background purchases fetch failed:", err);
+          });
         } catch (err: any) {
           setError(err.message || "An unexpected error occurred during real-time sync.");
           setLoading(false);
@@ -180,6 +195,7 @@ export default function VideosTab({ onGoHome }: VideosTabProps) {
   const handleSelectPlaylist = (pl: Playlist & { locked?: boolean }) => {
     setSelectedPlaylist(pl);
     setCurrentVideo(null); // Clear video player when shifting playlists
+    setSelectedSubject(null); // Clear selected subject when shifting playlists
   };
 
   const handlePlayVideo = (vid: Video) => {
@@ -190,8 +206,12 @@ export default function VideosTab({ onGoHome }: VideosTabProps) {
   };
 
   const handleBackToPlaylists = () => {
-    setSelectedPlaylist(null);
-    setCurrentVideo(null);
+    if (selectedSubject) {
+      setSelectedSubject(null);
+    } else {
+      setSelectedPlaylist(null);
+      setCurrentVideo(null);
+    }
   };
 
   const handleBackToVideosList = () => {
@@ -671,34 +691,57 @@ export default function VideosTab({ onGoHome }: VideosTabProps) {
             </div>
 
             <div className="space-y-2.5 max-h-[400px] overflow-y-auto">
-              {(selectedPlaylist.videos || []).map((vid, idx) => {
-                const isActive = vid.id === currentVideo.id;
-                return (
-                  <button
-                    key={vid.id}
-                    onClick={() => handlePlayVideo(vid)}
-                    className={`w-full text-left p-3 rounded-xl border text-xs font-semibold flex items-start gap-3 transition-all cursor-pointer ${
-                      isActive
-                        ? "bg-primary-50 border-primary-200 text-primary-900"
-                        : "bg-white border-gray-200 text-gray-700 hover:bg-slate-50 hover:border-gray-300"
-                    }`}
-                  >
-                    <div className={`w-6 h-6 rounded-lg flex items-center justify-center shrink-0 font-mono text-[11px] font-bold ${
-                      isActive
-                        ? "bg-primary-600 text-white"
-                        : "bg-navy-50 text-gray-500"
-                    }`}>
-                      {idx + 1}
-                    </div>
-                    <div className="space-y-0.5">
-                      <p className="leading-tight line-clamp-2">{vid.title}</p>
-                      <span className="text-[10px] text-gray-400 flex items-center gap-1 font-medium">
-                        <Clock className="w-3 h-3" /> {vid.duration}
-                      </span>
-                    </div>
-                  </button>
-                );
-              })}
+              {(() => {
+                const allVideos = selectedPlaylist.videos || [];
+                const sidebarVideos = allVideos.filter(vid => {
+                  if (!selectedSubject) return true;
+                  if (vid.subject) {
+                    return vid.subject.toLowerCase() === selectedSubject.toLowerCase();
+                  }
+                  // Auto fallback mapping based on keywords
+                  const title = (vid.title || "").toLowerCase();
+                  const mathKeywords = [
+                    "math", "arithmetic", "integration", "calculus", "probab", "matrix", 
+                    "matrices", "algebra", "relation", "function", "trig", "set", "geometry",
+                    "vector", "number", "ap", "gp", "determinant", "quad", "linear"
+                  ];
+                  const isMath = mathKeywords.some(kw => title.includes(kw));
+                  if (selectedSubject === "Mathematics") {
+                    return isMath;
+                  } else {
+                    return !isMath;
+                  }
+                });
+
+                return sidebarVideos.map((vid, idx) => {
+                  const isActive = vid.id === currentVideo.id;
+                  return (
+                    <button
+                      key={vid.id}
+                      onClick={() => handlePlayVideo(vid)}
+                      className={`w-full text-left p-3 rounded-xl border text-xs font-semibold flex items-start gap-3 transition-all cursor-pointer ${
+                        isActive
+                          ? "bg-primary-50 border-primary-200 text-primary-900"
+                          : "bg-white border-gray-200 text-gray-700 hover:bg-slate-50 hover:border-gray-300"
+                      }`}
+                    >
+                      <div className={`w-6 h-6 rounded-lg flex items-center justify-center shrink-0 font-mono text-[11px] font-bold ${
+                        isActive
+                          ? "bg-primary-600 text-white"
+                          : "bg-navy-50 text-gray-500"
+                      }`}>
+                        {idx + 1}
+                      </div>
+                      <div className="space-y-0.5">
+                        <p className="leading-tight line-clamp-2">{vid.title}</p>
+                        <span className="text-[10px] text-gray-400 flex items-center gap-1 font-medium">
+                          <Clock className="w-3 h-3" /> {vid.duration}
+                        </span>
+                      </div>
+                    </button>
+                  );
+                });
+              })()}
             </div>
           </div>
         </div>
@@ -843,85 +886,180 @@ export default function VideosTab({ onGoHome }: VideosTabProps) {
           );
         })() : null}
 
-        {/* Video selection layout */}
-        <div className="space-y-4">
-          <h3 className="font-display text-base font-bold text-navy-950">
-            Course syllabus Lectures
-          </h3>
-          
-          <div className="grid grid-cols-1 gap-3.5">
-            {(selectedPlaylist.videos || []).length > 0 ? (
-              (selectedPlaylist.videos || []).map((vid, idx) => (
-                <div
-                  key={vid.id}
-                  onClick={() => !isLocked && handlePlayVideo(vid)}
-                  className={`bg-white border rounded-2xl p-4 sm:p-5 transition-all flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 group ${
-                    isLocked 
-                      ? "border-gray-100 opacity-60 cursor-not-allowed select-none" 
-                      : "border-gray-100 hover:border-primary-400 hover:shadow-md cursor-pointer"
-                  }`}
-                >
-                  <div className="flex items-start gap-4">
-                    <div className={`w-10 h-10 rounded-xl font-bold font-mono text-sm flex items-center justify-center shrink-0 transition-all ${
-                      isLocked 
-                        ? "bg-slate-100 text-slate-400" 
-                        : "bg-primary-50 text-primary-600 group-hover:bg-primary-600 group-hover:text-white"
-                    }`}>
-                      {isLocked ? <Lock className="w-4 h-4" /> : idx + 1}
-                    </div>
-                    <div className="space-y-1">
-                      <h4 className={`text-sm font-bold transition ${
-                        isLocked ? "text-gray-400" : "text-navy-950 group-hover:text-primary-700"
-                      }`}>
-                        {vid.title}
-                      </h4>
-                      <p className="text-xs text-gray-400 line-clamp-1 max-w-xl font-light">
-                        {vid.description}
-                      </p>
-                      <span className="inline-flex items-center gap-1 text-[11px] font-medium text-gray-500 bg-slate-50 border border-gray-100 px-2 py-0.5 rounded-md">
-                        <Clock className="w-3 h-3 text-primary-500" /> {vid.duration}
-                      </span>
-                    </div>
-                  </div>
-
-                  <button
-                    type="button"
-                    disabled={isLocked}
-                    className={`py-2 px-4 rounded-xl text-xs font-bold flex items-center gap-1.5 self-end sm:self-center shrink-0 transition ${
-                      isLocked 
-                        ? "bg-slate-50 text-slate-400 border border-slate-100" 
-                        : "bg-primary-50 group-hover:bg-primary-600 text-primary-700 group-hover:text-white"
-                    }`}
-                  >
-                    {isLocked ? (
-                      <>
-                        <Lock className="w-3.5 h-3.5" />
-                        <span>Locked</span>
-                      </>
-                    ) : (
-                      <>
-                        <Play className="w-3.5 h-3.5 fill-current" />
-                        <span>Play Lecture</span>
-                      </>
-                    )}
-                  </button>
-                </div>
-              ))
-            ) : (
-              <div className="bg-white border border-gray-100 rounded-[24px] p-12 text-center space-y-4 shadow-sm">
-                <div className="w-14 h-14 rounded-2xl bg-primary-50 border border-primary-100 flex items-center justify-center text-primary-600 mx-auto">
-                  <VideoIcon className="w-6 h-6" />
+        {/* Subject selection/Video listing layout */}
+        {!selectedSubject ? (
+          <div className="space-y-6">
+            <div className="border-t border-slate-100 pt-6">
+              <h3 className="font-display text-base sm:text-lg font-bold text-navy-950">
+                Select a Subject Batch
+              </h3>
+              <p className="text-xs text-gray-400">Choose a subject core module below to access its exclusive video libraries.</p>
+            </div>
+            
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 pt-2">
+              {/* Science Card */}
+              <div
+                id="science_subject_card"
+                onClick={() => setSelectedSubject("Science")}
+                className="bg-white border border-gray-100 rounded-3xl p-8 shadow-sm hover:shadow-xl hover:border-emerald-300 transition-all cursor-pointer group flex flex-col items-center text-center space-y-4"
+              >
+                <div className="w-20 h-20 rounded-2xl bg-emerald-50 border border-emerald-100 flex items-center justify-center text-3xl group-hover:scale-110 transition duration-300">
+                  🧪
                 </div>
                 <div className="space-y-1">
-                  <h4 className="text-sm font-bold text-navy-950">No Lectures Uploaded Yet</h4>
-                  <p className="text-xs text-gray-400 max-w-md mx-auto leading-relaxed">
-                    This free batch registration is active! Suraj Sir will be uploading high-definition lectures, formulas, and mock sheets here very soon. Stay tuned!
+                  <h4 className="text-lg font-bold text-navy-950 group-hover:text-emerald-700 transition">
+                    Science
+                  </h4>
+                  <p className="text-xs text-gray-400 max-w-xs leading-relaxed font-light">
+                    Explore physics, chemistry, and biology lectures with rich diagrams and step-by-step formula derivations.
                   </p>
                 </div>
+                <div className="inline-flex items-center gap-1.5 text-xs font-bold text-emerald-600 bg-emerald-50 px-3.5 py-2 rounded-xl group-hover:bg-emerald-600 group-hover:text-white transition duration-300">
+                  <span>Open Science Library</span>
+                  <ArrowRight className="w-3.5 h-3.5" />
+                </div>
               </div>
-            )}
+
+              {/* Mathematics Card */}
+              <div
+                id="math_subject_card"
+                onClick={() => setSelectedSubject("Mathematics")}
+                className="bg-white border border-gray-100 rounded-3xl p-8 shadow-sm hover:shadow-xl hover:border-blue-300 transition-all cursor-pointer group flex flex-col items-center text-center space-y-4"
+              >
+                <div className="w-20 h-20 rounded-2xl bg-blue-50 border border-blue-100 flex items-center justify-center text-3xl group-hover:scale-110 transition duration-300">
+                  📐
+                </div>
+                <div className="space-y-1">
+                  <h4 className="text-lg font-bold text-navy-950 group-hover:text-blue-700 transition">
+                    Mathematics
+                  </h4>
+                  <p className="text-xs text-gray-400 max-w-xs leading-relaxed font-light">
+                    Master algebra, calculus, geometry, and arithmetic progression through guided problems and exercises.
+                  </p>
+                </div>
+                <div className="inline-flex items-center gap-1.5 text-xs font-bold text-blue-600 bg-blue-50 px-3.5 py-2 rounded-xl group-hover:bg-blue-600 group-hover:text-white transition duration-300">
+                  <span>Open Mathematics Library</span>
+                  <ArrowRight className="w-3.5 h-3.5" />
+                </div>
+              </div>
+            </div>
           </div>
-        </div>
+        ) : (() => {
+          // Filter videos by selectedSubject
+          const allVideos = selectedPlaylist.videos || [];
+          const filteredVideos = allVideos.filter(vid => {
+            if (vid.subject) {
+              return vid.subject.toLowerCase() === selectedSubject.toLowerCase();
+            }
+            // Auto fallback mapping based on keywords
+            const title = (vid.title || "").toLowerCase();
+            const mathKeywords = [
+              "math", "arithmetic", "integration", "calculus", "probab", "matrix", 
+              "matrices", "algebra", "relation", "function", "trig", "set", "geometry",
+              "vector", "number", "ap", "gp", "determinant", "quad", "linear"
+            ];
+            const isMath = mathKeywords.some(kw => title.includes(kw));
+            if (selectedSubject === "Mathematics") {
+              return isMath;
+            } else {
+              return !isMath;
+            }
+          });
+
+          return (
+            <div className="space-y-4">
+              <div className="flex items-center justify-between border-t border-slate-100 pt-6">
+                <div className="flex items-center gap-2">
+                  <span className="text-2xl">{selectedSubject === "Science" ? "🧪" : "📐"}</span>
+                  <h3 className="font-display text-base sm:text-lg font-bold text-navy-950">
+                    {selectedSubject} Video Library
+                  </h3>
+                </div>
+                <button
+                  id="view_all_subjects_button"
+                  onClick={() => setSelectedSubject(null)}
+                  className="text-xs text-primary-600 bg-primary-50 hover:bg-primary-100 px-3 py-1.5 rounded-xl font-bold flex items-center gap-1 transition cursor-pointer"
+                >
+                  <ArrowLeft className="w-3.5 h-3.5" />
+                  <span>View Subjects</span>
+                </button>
+              </div>
+              
+              <div className="grid grid-cols-1 gap-3.5">
+                {filteredVideos.length > 0 ? (
+                  filteredVideos.map((vid, idx) => (
+                    <div
+                      key={vid.id}
+                      onClick={() => !isLocked && handlePlayVideo(vid)}
+                      className={`bg-white border rounded-2xl p-4 sm:p-5 transition-all flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 group ${
+                        isLocked 
+                          ? "border-gray-100 opacity-60 cursor-not-allowed select-none" 
+                          : "border-gray-100 hover:border-primary-400 hover:shadow-md cursor-pointer"
+                      }`}
+                    >
+                      <div className="flex items-start gap-4">
+                        <div className={`w-10 h-10 rounded-xl font-bold font-mono text-sm flex items-center justify-center shrink-0 transition-all ${
+                          isLocked 
+                            ? "bg-slate-100 text-slate-400" 
+                            : "bg-primary-50 text-primary-600 group-hover:bg-primary-600 group-hover:text-white"
+                        }`}>
+                          {isLocked ? <Lock className="w-4 h-4" /> : idx + 1}
+                        </div>
+                        <div className="space-y-1">
+                          <h4 className={`text-sm font-bold transition ${
+                            isLocked ? "text-gray-400" : "text-navy-950 group-hover:text-primary-700"
+                          }`}>
+                            {vid.title}
+                          </h4>
+                          <p className="text-xs text-gray-400 line-clamp-1 max-w-xl font-light">
+                            {vid.description}
+                          </p>
+                          <span className="inline-flex items-center gap-1 text-[11px] font-medium text-gray-500 bg-slate-50 border border-gray-100 px-2 py-0.5 rounded-md">
+                            <Clock className="w-3 h-3 text-primary-500" /> {vid.duration}
+                          </span>
+                        </div>
+                      </div>
+
+                      <button
+                        type="button"
+                        disabled={isLocked}
+                        className={`py-2 px-4 rounded-xl text-xs font-bold flex items-center gap-1.5 self-end sm:self-center shrink-0 transition ${
+                          isLocked 
+                            ? "bg-slate-50 text-slate-400 border border-slate-100" 
+                            : "bg-primary-50 group-hover:bg-primary-600 text-primary-700 group-hover:text-white"
+                        }`}
+                      >
+                        {isLocked ? (
+                          <>
+                            <Lock className="w-3.5 h-3.5" />
+                            <span>Locked</span>
+                          </>
+                        ) : (
+                          <>
+                            <Play className="w-3.5 h-3.5 fill-current" />
+                            <span>Play Lecture</span>
+                          </>
+                        )}
+                      </button>
+                    </div>
+                  ))
+                ) : (
+                  <div className="bg-white border border-gray-100 rounded-[24px] p-12 text-center space-y-4 shadow-sm">
+                    <div className="w-14 h-14 rounded-2xl bg-primary-50 border border-primary-100 flex items-center justify-center text-primary-600 mx-auto">
+                      <VideoIcon className="w-6 h-6" />
+                    </div>
+                    <div className="space-y-1">
+                      <h4 className="text-sm font-bold text-navy-950">No Lectures Uploaded Yet</h4>
+                      <p className="text-xs text-gray-400 max-w-md mx-auto leading-relaxed">
+                        This {selectedSubject} syllabus section is active! Suraj Sir will be uploading high-definition lectures and exercises very soon. Stay tuned!
+                      </p>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+          );
+        })()}
       </div>
     );
   }

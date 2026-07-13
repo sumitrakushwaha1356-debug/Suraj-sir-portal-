@@ -5,6 +5,7 @@ export interface Video {
   embedCode: string;
   description: string;
   videoUrl?: string;
+  subject?: string;
 }
 
 export interface Playlist {

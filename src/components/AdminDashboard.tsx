@@ -89,7 +89,7 @@ export default function AdminDashboard({ email, onLogout, onGoHome }: AdminDashb
   const [videoModalOpen, setVideoModalOpen] = useState(false);
   const [selectedPlaylistForVideos, setSelectedPlaylistForVideos] = useState<Playlist | null>(null);
   const [editingVideo, setEditingVideo] = useState<Video | null>(null);
-  const [videoForm, setVideoForm] = useState({ title: "", duration: "15:00", embedCode: "", description: "", videoUrl: "" });
+  const [videoForm, setVideoForm] = useState({ title: "", duration: "15:00", embedCode: "", description: "", videoUrl: "", subject: "Science" });
 
   // Playlist Management Form States (Class 10th & 12th Free Batches)
   const [pmPlaylistSelection, setPmPlaylistSelection] = useState<string>("class-12-free-batch");
@@ -97,6 +97,7 @@ export default function AdminDashboard({ email, onLogout, onGoHome }: AdminDashb
   const [pmYoutubeUrl, setPmYoutubeUrl] = useState<string>("");
   const [pmVideoDescription, setPmVideoDescription] = useState<string>("");
   const [pmThumbnailUrl, setPmThumbnailUrl] = useState<string>("");
+  const [pmSubject, setPmSubject] = useState<string>("Science");
   const [pmEditingVideoId, setPmEditingVideoId] = useState<string | null>(null);
   const [pmOriginalPlaylistId, setPmOriginalPlaylistId] = useState<string | null>(null);
 
@@ -304,7 +305,8 @@ export default function AdminDashboard({ email, onLogout, onGoHome }: AdminDashb
         duration: vid.duration,
         embedCode: vid.embedCode || "",
         description: vid.description || "",
-        videoUrl: vid.videoUrl || ""
+        videoUrl: vid.videoUrl || "",
+        subject: vid.subject || "Science"
       });
     } else {
       setEditingVideo(null);
@@ -313,7 +315,8 @@ export default function AdminDashboard({ email, onLogout, onGoHome }: AdminDashb
         duration: "25:00",
         embedCode: "",
         description: "",
-        videoUrl: ""
+        videoUrl: "",
+        subject: "Science"
       });
     }
     setVideoModalOpen(true);
@@ -410,7 +413,8 @@ export default function AdminDashboard({ email, onLogout, onGoHome }: AdminDashb
         duration: "25:00",
         embedCode,
         description: pmVideoDescription,
-        videoUrl: pmThumbnailUrl
+        videoUrl: pmThumbnailUrl,
+        subject: pmSubject
       };
 
       if (pmEditingVideoId) {
@@ -432,6 +436,7 @@ export default function AdminDashboard({ email, onLogout, onGoHome }: AdminDashb
       setPmYoutubeUrl("");
       setPmVideoDescription("");
       setPmThumbnailUrl("");
+      setPmSubject("Science");
       setPmEditingVideoId(null);
       setPmOriginalPlaylistId(null);
 
@@ -450,6 +455,7 @@ export default function AdminDashboard({ email, onLogout, onGoHome }: AdminDashb
     setPmYoutubeUrl(vid.embedCode ? `https://www.youtube.com/watch?v=${vid.embedCode}` : "");
     setPmVideoDescription(vid.description || "");
     setPmThumbnailUrl(vid.videoUrl || "");
+    setPmSubject(vid.subject || "Science");
     setPmEditingVideoId(vid.id);
     setPmOriginalPlaylistId(playlistId);
     showFeedback("Video loaded into editor form.");
@@ -474,6 +480,7 @@ export default function AdminDashboard({ email, onLogout, onGoHome }: AdminDashb
     setPmYoutubeUrl("");
     setPmVideoDescription("");
     setPmThumbnailUrl("");
+    setPmSubject("Science");
     setPmEditingVideoId(null);
     setPmOriginalPlaylistId(null);
     showFeedback("Edit cleared.");
@@ -1194,6 +1201,19 @@ export default function AdminDashboard({ email, onLogout, onGoHome }: AdminDashb
                       rows={3}
                       className="w-full px-4 py-2.5 bg-slate-50 border border-gray-200 rounded-xl text-xs sm:text-sm text-navy-900 placeholder:text-gray-400 focus:outline-none focus:border-accent-gold/40 resize-none"
                     />
+                  </div>
+
+                  {/* Subject Selector */}
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-bold text-gray-600 block">Subject *</label>
+                    <select
+                      value={pmSubject}
+                      onChange={(e) => setPmSubject(e.target.value)}
+                      className="w-full px-4 py-2.5 bg-slate-50 border border-gray-200 rounded-xl text-xs sm:text-sm text-navy-900 focus:outline-none focus:border-accent-gold/40 cursor-pointer"
+                    >
+                      <option value="Science">🧪 Science</option>
+                      <option value="Mathematics">📐 Mathematics</option>
+                    </select>
                   </div>
 
                   {/* Thumbnail URL (Optional) */}
@@ -1951,6 +1971,18 @@ export default function AdminDashboard({ email, onLogout, onGoHome }: AdminDashb
                       className="w-full px-4 py-2 bg-slate-50 border border-gray-200 rounded-xl outline-none focus:border-accent-gold transition"
                     />
                   </div>
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="text-xs font-bold text-navy-800 block">Subject</label>
+                  <select
+                    value={videoForm.subject}
+                    onChange={(e) => setVideoForm({ ...videoForm, subject: e.target.value })}
+                    className="w-full px-4 py-2 bg-slate-50 border border-gray-200 rounded-xl outline-none focus:border-accent-gold transition cursor-pointer text-xs sm:text-sm text-navy-900"
+                  >
+                    <option value="Science">🧪 Science</option>
+                    <option value="Mathematics">📐 Mathematics</option>
+                  </select>
                 </div>
 
                 <div className="border border-dashed border-gray-200 p-4 rounded-xl space-y-3 bg-slate-50/50">
