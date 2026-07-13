@@ -27,7 +27,9 @@ import {
   HelpCircle,
   Search,
   GraduationCap,
-  Home
+  Home,
+  Youtube,
+  Upload
 } from "lucide-react";
 
 import { Playlist, Video, Book, Test, StudentProfile, PaymentRequest } from "../types";
@@ -53,7 +55,8 @@ import {
   deleteTestFromDb,
   approvePayment as approvePaymentInFirestore,
   rejectPayment as rejectPaymentInFirestore,
-  deletePaymentRequest
+  deletePaymentRequest,
+  uploadFileToStorage
 } from "../lib/firebase";
 
 interface AdminDashboardProps {
@@ -94,9 +97,17 @@ export default function AdminDashboard({ email, onLogout, onGoHome }: AdminDashb
   // Playlist Management Form States (Class 10th & 12th Free Batches)
   const [pmPlaylistSelection, setPmPlaylistSelection] = useState<string>("class-12-free-batch");
   const [pmVideoTitle, setPmVideoTitle] = useState<string>("");
+  const [pmVideoSourceType, setPmVideoSourceType] = useState<"youtube" | "file">("youtube");
   const [pmYoutubeUrl, setPmYoutubeUrl] = useState<string>("");
+  const [pmVideoUrl, setPmVideoUrl] = useState<string>("");
+  const [pmVideoFile, setPmVideoFile] = useState<File | null>(null);
+  const [pmUploadProgress, setPmUploadProgress] = useState<number>(0);
+  const [pmIsUploading, setPmIsUploading] = useState<boolean>(false);
   const [pmVideoDescription, setPmVideoDescription] = useState<string>("");
   const [pmThumbnailUrl, setPmThumbnailUrl] = useState<string>("");
+  const [pmThumbnailFile, setPmThumbnailFile] = useState<File | null>(null);
+  const [pmThumbnailUploadProgress, setPmThumbnailUploadProgress] = useState<number>(0);
+  const [pmIsThumbnailUploading, setPmIsThumbnailUploading] = useState<boolean>(false);
   const [pmSubject, setPmSubject] = useState<string>("Science");
   const [pmEditingVideoId, setPmEditingVideoId] = useState<string | null>(null);
   const [pmOriginalPlaylistId, setPmOriginalPlaylistId] = useState<string | null>(null);
@@ -322,17 +333,78 @@ export default function AdminDashboard({ email, onLogout, onGoHome }: AdminDashb
     setVideoModalOpen(true);
   };
 
+  const getYoutubeId = (url: string) => {
+    if (!url) return "";
+    const trimmed = url.trim();
+    
+    // If it's already just an 11-character video ID
+    if (/^[a-zA-Z0-9_-]{11}$/.test(trimmed)) {
+      return trimmed;
+    }
+    
+    // Match patterns for youtu.be, youtube.com, m.youtube.com, etc.
+    const regexes = [
+      /youtube\.com\/watch\?v=([a-zA-Z0-9_-]{11})/,
+      /youtu\.be\/([a-zA-Z0-9_-]{11})/,
+      /youtube\.com\/embed\/([a-zA-Z0-9_-]{11})/,
+      /youtube\.com\/v\/([a-zA-Z0-9_-]{11})/,
+      /youtube\.com\/shorts\/([a-zA-Z0-9_-]{11})/,
+      /m\.youtube\.com\/watch\?v=([a-zA-Z0-9_-]{11})/,
+    ];
+    
+    for (const regex of regexes) {
+      const match = trimmed.match(regex);
+      if (match && match[1] && match[1].length === 11) {
+        return match[1];
+      }
+    }
+    
+    // Extra checks
+    const vParamMatch = trimmed.match(/[?&]v=([a-zA-Z0-9_-]{11})/);
+    if (vParamMatch && vParamMatch[1]) {
+      return vParamMatch[1];
+    }
+
+    const embedMatch = trimmed.match(/\/embed\/([a-zA-Z0-9_-]{11})/);
+    if (embedMatch && embedMatch[1]) {
+      return embedMatch[1];
+    }
+
+    try {
+      const urlObj = new URL(trimmed);
+      const pathParts = urlObj.pathname.split("/");
+      const lastPart = pathParts[pathParts.length - 1];
+      if (lastPart && /^[a-zA-Z0-9_-]{11}$/.test(lastPart)) {
+        return lastPart;
+      }
+    } catch (e) {
+      const fallbackMatch = trimmed.match(/v=([a-zA-Z0-9_-]{11})/);
+      if (fallbackMatch && fallbackMatch[1]) {
+        return fallbackMatch[1];
+      }
+    }
+
+    return trimmed; // fallback to original input if nothing matched
+  };
+
   const handleVideoSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedPlaylistForVideos) return;
     setSyncing(true);
 
     try {
+      // Sanitize input to make sure YouTube links are saved only as 11-char IDs
+      const sanitizedEmbedCode = videoForm.embedCode ? getYoutubeId(videoForm.embedCode) : "";
+      const processedVideoForm = {
+        ...videoForm,
+        embedCode: sanitizedEmbedCode
+      };
+
       if (editingVideo) {
-        await updateVideo(selectedPlaylistForVideos.id, editingVideo.id, videoForm);
+        await updateVideo(selectedPlaylistForVideos.id, editingVideo.id, processedVideoForm);
         showFeedback("Lecture video details updated!");
       } else {
-        await createVideo(selectedPlaylistForVideos.id, videoForm);
+        await createVideo(selectedPlaylistForVideos.id, processedVideoForm);
         showFeedback("New lecture video appended to syllabus!");
       }
       setVideoModalOpen(false);
@@ -361,12 +433,6 @@ export default function AdminDashboard({ email, onLogout, onGoHome }: AdminDashb
   // ==========================================
   // PLAYLIST MANAGEMENT TAB HANDLERS
   // ==========================================
-  const getYoutubeId = (url: string) => {
-    if (!url) return "";
-    const regExp = /^.*(youtu.be\/|v\/|u\/\w\/|embed\/|watch\?v=|\&v=)([^#\&\?]*).*/;
-    const match = url.match(regExp);
-    return (match && match[2].length === 11) ? match[2] : url;
-  };
 
   const handlePmSaveVideo = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -378,8 +444,12 @@ export default function AdminDashboard({ email, onLogout, onGoHome }: AdminDashb
       showFeedback("Please enter a video title.", true);
       return;
     }
-    if (!pmYoutubeUrl.trim()) {
+    if (pmVideoSourceType === "youtube" && !pmYoutubeUrl.trim()) {
       showFeedback("Please enter a YouTube video URL or ID.", true);
+      return;
+    }
+    if (pmVideoSourceType === "file" && !pmVideoFile && !pmVideoUrl) {
+      showFeedback("Please upload a local video file.", true);
       return;
     }
 
@@ -407,13 +477,47 @@ export default function AdminDashboard({ email, onLogout, onGoHome }: AdminDashb
         });
       }
 
-      const embedCode = getYoutubeId(pmYoutubeUrl);
+      // 2. Upload Thumbnail if present
+      let finalThumbnailUrl = pmThumbnailUrl;
+      if (pmThumbnailFile) {
+        setPmIsThumbnailUploading(true);
+        try {
+          const path = `thumbnails/${Date.now()}_${pmThumbnailFile.name}`;
+          finalThumbnailUrl = await uploadFileToStorage(pmThumbnailFile, path, (progress) => {
+            setPmThumbnailUploadProgress(Math.round(progress));
+          });
+        } catch (uploadErr: any) {
+          throw new Error("Failed to upload thumbnail: " + uploadErr.message);
+        } finally {
+          setPmIsThumbnailUploading(false);
+        }
+      }
+
+      // 3. Upload Video if file source and file selected
+      let finalVideoUrl = pmVideoUrl;
+      if (pmVideoSourceType === "file" && pmVideoFile) {
+        setPmIsUploading(true);
+        try {
+          const path = `videos/${Date.now()}_${pmVideoFile.name}`;
+          finalVideoUrl = await uploadFileToStorage(pmVideoFile, path, (progress) => {
+            setPmUploadProgress(Math.round(progress));
+          });
+        } catch (uploadErr: any) {
+          throw new Error("Failed to upload video: " + uploadErr.message);
+        } finally {
+          setPmIsUploading(false);
+        }
+      }
+
+      // 4. Construct video structure
+      const embedCode = pmVideoSourceType === "youtube" ? getYoutubeId(pmYoutubeUrl) : "";
       const videoData = {
         title: pmVideoTitle,
-        duration: "25:00",
+        duration: "15:00",
         embedCode,
+        videoUrl: pmVideoSourceType === "file" ? finalVideoUrl : "",
         description: pmVideoDescription,
-        videoUrl: pmThumbnailUrl,
+        thumbnail: finalThumbnailUrl || "",
         subject: pmSubject
       };
 
@@ -433,9 +537,15 @@ export default function AdminDashboard({ email, onLogout, onGoHome }: AdminDashb
 
       // Reset form
       setPmVideoTitle("");
+      setPmVideoSourceType("youtube");
       setPmYoutubeUrl("");
+      setPmVideoUrl("");
+      setPmVideoFile(null);
+      setPmUploadProgress(0);
       setPmVideoDescription("");
       setPmThumbnailUrl("");
+      setPmThumbnailFile(null);
+      setPmThumbnailUploadProgress(0);
       setPmSubject("Science");
       setPmEditingVideoId(null);
       setPmOriginalPlaylistId(null);
@@ -452,12 +562,24 @@ export default function AdminDashboard({ email, onLogout, onGoHome }: AdminDashb
   const handlePmEditVideo = (playlistId: string, vid: any) => {
     setPmPlaylistSelection(playlistId);
     setPmVideoTitle(vid.title);
-    setPmYoutubeUrl(vid.embedCode ? `https://www.youtube.com/watch?v=${vid.embedCode}` : "");
+    if (vid.videoUrl && !vid.embedCode) {
+      setPmVideoSourceType("file");
+      setPmVideoUrl(vid.videoUrl);
+      setPmYoutubeUrl("");
+    } else {
+      setPmVideoSourceType("youtube");
+      setPmYoutubeUrl(vid.embedCode ? `https://www.youtube.com/watch?v=${vid.embedCode}` : "");
+      setPmVideoUrl("");
+    }
     setPmVideoDescription(vid.description || "");
-    setPmThumbnailUrl(vid.videoUrl || "");
+    setPmThumbnailUrl(vid.thumbnail || "");
     setPmSubject(vid.subject || "Science");
     setPmEditingVideoId(vid.id);
     setPmOriginalPlaylistId(playlistId);
+    setPmVideoFile(null);
+    setPmThumbnailFile(null);
+    setPmUploadProgress(0);
+    setPmThumbnailUploadProgress(0);
     showFeedback("Video loaded into editor form.");
   };
 
@@ -477,9 +599,15 @@ export default function AdminDashboard({ email, onLogout, onGoHome }: AdminDashb
 
   const handlePmCancelEdit = () => {
     setPmVideoTitle("");
+    setPmVideoSourceType("youtube");
     setPmYoutubeUrl("");
+    setPmVideoUrl("");
+    setPmVideoFile(null);
+    setPmUploadProgress(0);
     setPmVideoDescription("");
     setPmThumbnailUrl("");
+    setPmThumbnailFile(null);
+    setPmThumbnailUploadProgress(0);
     setPmSubject("Science");
     setPmEditingVideoId(null);
     setPmOriginalPlaylistId(null);
@@ -1154,7 +1282,7 @@ export default function AdminDashboard({ email, onLogout, onGoHome }: AdminDashb
                 <form onSubmit={handlePmSaveVideo} className="space-y-4">
                   {/* Playlist Selection */}
                   <div className="space-y-1.5">
-                    <label className="text-xs font-bold text-gray-600 block">Playlist Selection *</label>
+                    <label className="text-xs font-bold text-gray-600 block">Batch Selection *</label>
                     <select
                       value={pmPlaylistSelection}
                       onChange={(e) => setPmPlaylistSelection(e.target.value)}
@@ -1162,6 +1290,19 @@ export default function AdminDashboard({ email, onLogout, onGoHome }: AdminDashb
                     >
                       <option value="class-10-free-batch">Class 10th Free Batch</option>
                       <option value="class-12-free-batch">Class 12th Free Batch</option>
+                    </select>
+                  </div>
+
+                  {/* Subject Selector */}
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-bold text-gray-600 block">Subject *</label>
+                    <select
+                      value={pmSubject}
+                      onChange={(e) => setPmSubject(e.target.value)}
+                      className="w-full px-4 py-2.5 bg-slate-50 border border-gray-200 rounded-xl text-xs sm:text-sm text-navy-900 focus:outline-none focus:border-accent-gold/40 cursor-pointer"
+                    >
+                      <option value="Science">🧪 Science</option>
+                      <option value="Mathematics">📐 Mathematics</option>
                     </select>
                   </div>
 
@@ -1178,20 +1319,92 @@ export default function AdminDashboard({ email, onLogout, onGoHome }: AdminDashb
                     />
                   </div>
 
-                  {/* YouTube Video URL */}
+                  {/* Video Source Type Toggle */}
                   <div className="space-y-1.5">
-                    <label className="text-xs font-bold text-gray-600 block">YouTube Video URL *</label>
-                    <input
-                      type="text"
-                      placeholder="e.g. https://www.youtube.com/watch?v=dQw4w9WgXcQ"
-                      value={pmYoutubeUrl}
-                      onChange={(e) => setPmYoutubeUrl(e.target.value)}
-                      required
-                      className="w-full px-4 py-2.5 bg-slate-50 border border-gray-200 rounded-xl text-xs sm:text-sm text-navy-900 placeholder:text-gray-400 focus:outline-none focus:border-accent-gold/40"
-                    />
+                    <label className="text-xs font-bold text-gray-600 block">Video Source Option *</label>
+                    <div className="grid grid-cols-2 gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setPmVideoSourceType("youtube")}
+                        className={`py-2 px-3 rounded-xl border text-xs font-bold transition-all cursor-pointer ${
+                          pmVideoSourceType === "youtube"
+                            ? "bg-primary-50 border-primary-300 text-primary-700 shadow-sm"
+                            : "bg-slate-50 border-gray-200 text-gray-600 hover:bg-slate-100"
+                        }`}
+                      >
+                        Option 1: YouTube URL
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setPmVideoSourceType("file")}
+                        className={`py-2 px-3 rounded-xl border text-xs font-bold transition-all cursor-pointer ${
+                          pmVideoSourceType === "file"
+                            ? "bg-primary-50 border-primary-300 text-primary-700 shadow-sm"
+                            : "bg-slate-50 border-gray-200 text-gray-600 hover:bg-slate-100"
+                        }`}
+                      >
+                        Option 2: Upload Video File
+                      </button>
+                    </div>
                   </div>
 
-                  {/* Video Description (Optional) */}
+                  {/* YouTube Video URL Input */}
+                  {pmVideoSourceType === "youtube" && (
+                    <div className="space-y-1.5 animate-fadeIn">
+                      <label className="text-xs font-bold text-gray-600 block">YouTube Video URL *</label>
+                      <div className="relative">
+                        <Youtube className="absolute left-3.5 top-3 w-4 h-4 text-red-500" />
+                        <input
+                          type="text"
+                          placeholder="e.g. https://www.youtube.com/watch?v=dQw4w9WgXcQ"
+                          value={pmYoutubeUrl}
+                          onChange={(e) => setPmYoutubeUrl(e.target.value)}
+                          required={pmVideoSourceType === "youtube"}
+                          className="w-full pl-10 pr-4 py-2.5 bg-slate-50 border border-gray-200 rounded-xl text-xs sm:text-sm text-navy-900 placeholder:text-gray-400 focus:outline-none focus:border-accent-gold/40"
+                        />
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Local Video File Upload Input */}
+                  {pmVideoSourceType === "file" && (
+                    <div className="space-y-1.5 animate-fadeIn">
+                      <label className="text-xs font-bold text-gray-600 block">Upload Local Video File *</label>
+                      <div className="relative">
+                        <input
+                          type="file"
+                          accept=".mp4,.mov,.avi,.mkv"
+                          onChange={(e) => {
+                            if (e.target.files?.[0]) {
+                              setPmVideoFile(e.target.files[0]);
+                            }
+                          }}
+                          required={pmVideoSourceType === "file" && !pmVideoUrl}
+                          className="w-full px-4 py-2 bg-slate-50 border border-gray-200 rounded-xl text-xs text-navy-900 focus:outline-none file:mr-4 file:py-1 file:px-3 file:rounded-lg file:border-0 file:text-xs file:font-semibold file:bg-primary-50 file:text-primary-700 hover:file:bg-primary-100 cursor-pointer"
+                        />
+                      </div>
+                      {pmVideoUrl && (
+                        <p className="text-[10px] text-emerald-600 font-medium leading-relaxed">
+                          ✓ Existing video file loaded. <a href={pmVideoUrl} target="_blank" rel="noreferrer" className="underline font-mono break-all inline-block">Click here to watch</a> (Choose a different file to replace).
+                        </p>
+                      )}
+                      {pmIsUploading && (
+                        <div className="space-y-1 bg-primary-50/50 p-2.5 rounded-xl border border-primary-100">
+                          <div className="flex justify-between text-[10px] font-black text-primary-700">
+                            <span className="flex items-center gap-1">
+                              <Upload className="w-3 h-3 animate-bounce" /> Uploading Video File...
+                            </span>
+                            <span>{pmUploadProgress}%</span>
+                          </div>
+                          <div className="w-full h-1.5 bg-slate-100 rounded-full overflow-hidden">
+                            <div className="bg-primary-600 h-full transition-all duration-300" style={{ width: `${pmUploadProgress}%` }} />
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Video Description */}
                   <div className="space-y-1.5">
                     <label className="text-xs font-bold text-gray-600 block">Video Description (Optional)</label>
                     <textarea
@@ -1203,36 +1416,53 @@ export default function AdminDashboard({ email, onLogout, onGoHome }: AdminDashb
                     />
                   </div>
 
-                  {/* Subject Selector */}
-                  <div className="space-y-1.5">
-                    <label className="text-xs font-bold text-gray-600 block">Subject *</label>
-                    <select
-                      value={pmSubject}
-                      onChange={(e) => setPmSubject(e.target.value)}
-                      className="w-full px-4 py-2.5 bg-slate-50 border border-gray-200 rounded-xl text-xs sm:text-sm text-navy-900 focus:outline-none focus:border-accent-gold/40 cursor-pointer"
-                    >
-                      <option value="Science">🧪 Science</option>
-                      <option value="Mathematics">📐 Mathematics</option>
-                    </select>
+                  {/* Custom Thumbnail Selection */}
+                  <div className="space-y-2 border-t border-dashed border-gray-100 pt-3">
+                    <label className="text-xs font-bold text-gray-600 block">Custom Thumbnail (Optional)</label>
+                    <div className="space-y-2">
+                      <input
+                        type="file"
+                        accept="image/*"
+                        onChange={(e) => {
+                          if (e.target.files?.[0]) {
+                            setPmThumbnailFile(e.target.files[0]);
+                          }
+                        }}
+                        className="w-full px-4 py-2 bg-slate-50 border border-gray-200 rounded-xl text-xs text-navy-900 focus:outline-none file:mr-4 file:py-1 file:px-3 file:rounded-lg file:border-0 file:text-xs file:font-semibold file:bg-amber-50 file:text-amber-700 hover:file:bg-amber-100 cursor-pointer"
+                      />
+                      <p className="text-[10px] text-gray-400 text-center font-bold">OR PASTE THUMBNAIL URL BELOW</p>
+                      <input
+                        type="text"
+                        placeholder="e.g. https://images.unsplash.com/photo-..."
+                        value={pmThumbnailUrl}
+                        onChange={(e) => setPmThumbnailUrl(e.target.value)}
+                        className="w-full px-4 py-2.5 bg-slate-50 border border-gray-200 rounded-xl text-xs sm:text-sm text-navy-900 placeholder:text-gray-400 focus:outline-none focus:border-accent-gold/40"
+                      />
+                    </div>
+                    {pmThumbnailUrl && (
+                      <div className="flex items-center gap-2 p-1.5 bg-slate-50 border border-gray-100 rounded-xl">
+                        <img src={pmThumbnailUrl} alt="Thumbnail Preview" className="w-12 h-9 object-cover rounded border border-gray-100 shrink-0" referrerPolicy="no-referrer" />
+                        <span className="text-[10px] text-emerald-600 font-bold">✓ Thumbnail Active</span>
+                      </div>
+                    )}
+                    {pmIsThumbnailUploading && (
+                      <div className="space-y-1 bg-amber-50/50 p-2.5 rounded-xl border border-amber-100">
+                        <div className="flex justify-between text-[10px] font-black text-amber-700">
+                          <span>Uploading image...</span>
+                          <span>{pmThumbnailUploadProgress}%</span>
+                        </div>
+                        <div className="w-full h-1.5 bg-slate-100 rounded-full overflow-hidden">
+                          <div className="bg-amber-500 h-full transition-all duration-300" style={{ width: `${pmThumbnailUploadProgress}%` }} />
+                        </div>
+                      </div>
+                    )}
                   </div>
 
-                  {/* Thumbnail URL (Optional) */}
-                  <div className="space-y-1.5">
-                    <label className="text-xs font-bold text-gray-600 block">Thumbnail URL (Optional)</label>
-                    <input
-                      type="text"
-                      placeholder="e.g. https://images.unsplash.com/... or base64 image data"
-                      value={pmThumbnailUrl}
-                      onChange={(e) => setPmThumbnailUrl(e.target.value)}
-                      className="w-full px-4 py-2.5 bg-slate-50 border border-gray-200 rounded-xl text-xs sm:text-sm text-navy-900 placeholder:text-gray-400 focus:outline-none focus:border-accent-gold/40"
-                    />
-                  </div>
-
-                  {/* Buttons */}
+                  {/* Action Buttons */}
                   <div className="flex gap-2.5 pt-2">
                     <button
                       type="submit"
-                      disabled={syncing}
+                      disabled={syncing || pmIsUploading || pmIsThumbnailUploading}
                       className="flex-1 py-2.5 px-4 rounded-xl bg-primary-600 hover:bg-primary-700 text-white text-xs sm:text-sm font-bold flex items-center justify-center gap-1.5 shadow-sm transition-all cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
                     >
                       <Check className="w-4 h-4" />
@@ -1269,40 +1499,114 @@ export default function AdminDashboard({ email, onLogout, onGoHome }: AdminDashb
                     </span>
                   </div>
 
-                  <div className="space-y-3 max-h-[300px] overflow-y-auto pr-1">
-                    {!(playlists.find(p => p.id === "class-10-free-batch")?.videos?.length) ? (
-                      <p className="text-xs text-gray-400 italic py-4 text-center">No video lectures registered yet under Class 10th Free Batch.</p>
-                    ) : (
-                      playlists.find(p => p.id === "class-10-free-batch")?.videos?.map((vid) => (
-                        <div key={vid.id} className="p-3 bg-slate-50 border border-gray-100 rounded-xl flex justify-between items-center gap-4 hover:border-purple-200 transition">
-                          <div className="space-y-1 min-w-0 flex-1">
-                            <h4 className="text-xs sm:text-sm font-bold text-navy-950 truncate">{vid.title}</h4>
-                            <p className="text-[11px] text-gray-400 line-clamp-1">{vid.description || "No description provided."}</p>
-                            <div className="flex items-center gap-2 text-[10px] text-gray-400">
-                              <span className="font-mono bg-white px-1.5 py-0.5 rounded border border-gray-200 text-gray-500 truncate">
-                                YouTube: {vid.embedCode}
-                              </span>
+                  <div className="space-y-4 max-h-[500px] overflow-y-auto pr-1">
+                    {/* Science Group */}
+                    <div className="space-y-2">
+                      <h4 className="text-[11px] font-black text-gray-500 uppercase tracking-wider flex items-center gap-1">
+                        <span>🧪 Science</span>
+                        <span className="text-[10px] font-bold text-gray-400">
+                          ({(playlists.find(p => p.id === "class-10-free-batch")?.videos?.filter(v => v.subject === "Science" || !v.subject)?.length || 0)})
+                        </span>
+                      </h4>
+                      {!(playlists.find(p => p.id === "class-10-free-batch")?.videos?.filter(v => v.subject === "Science" || !v.subject)?.length) ? (
+                        <p className="text-[11px] text-gray-400 italic pl-2 py-1">No Science video lectures registered yet.</p>
+                      ) : (
+                        playlists.find(p => p.id === "class-10-free-batch")?.videos?.filter(v => v.subject === "Science" || !v.subject).map((vid) => (
+                          <div key={vid.id} className="p-3 bg-slate-50 border border-gray-100 rounded-xl flex justify-between items-center gap-4 hover:border-purple-200 transition">
+                            <div className="flex gap-3 items-center min-w-0 flex-1">
+                              {vid.thumbnail && (
+                                <img src={vid.thumbnail} alt="" className="w-10 h-8 object-cover rounded border border-gray-100 shrink-0" referrerPolicy="no-referrer" />
+                              )}
+                              <div className="space-y-0.5 min-w-0">
+                                <h5 className="text-xs sm:text-sm font-bold text-navy-950 truncate">{vid.title}</h5>
+                                <p className="text-[11px] text-gray-400 line-clamp-1">{vid.description || "No description provided."}</p>
+                                <div className="flex items-center gap-1.5 text-[10px] text-gray-400">
+                                  {vid.embedCode ? (
+                                    <span className="font-mono bg-white px-1.5 py-0.5 rounded border border-gray-200 text-red-500 truncate">
+                                      YouTube: {vid.embedCode}
+                                    </span>
+                                  ) : (
+                                    <span className="font-mono bg-white px-1.5 py-0.5 rounded border border-gray-200 text-emerald-600 truncate">
+                                      Local Video File
+                                    </span>
+                                  )}
+                                </div>
+                              </div>
+                            </div>
+                            <div className="flex gap-1.5 shrink-0">
+                              <button
+                                onClick={() => handlePmEditVideo("class-10-free-batch", vid)}
+                                className="p-1.5 bg-white border border-gray-200 hover:bg-slate-100 rounded-lg text-gray-600 transition cursor-pointer"
+                                title="Edit Video"
+                              >
+                                <Edit className="w-3.5 h-3.5" />
+                              </button>
+                              <button
+                                onClick={() => handlePmDeleteVideo("class-10-free-batch", vid.id)}
+                                className="p-1.5 bg-red-50 border border-red-100 hover:bg-red-100 rounded-lg text-red-600 transition cursor-pointer"
+                                title="Delete Video"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
                             </div>
                           </div>
-                          <div className="flex gap-1.5 shrink-0">
-                            <button
-                              onClick={() => handlePmEditVideo("class-10-free-batch", vid)}
-                              className="p-1.5 bg-white border border-gray-200 hover:bg-slate-100 rounded-lg text-gray-600 transition cursor-pointer"
-                              title="Edit Video"
-                            >
-                              <Edit className="w-3.5 h-3.5" />
-                            </button>
-                            <button
-                              onClick={() => handlePmDeleteVideo("class-10-free-batch", vid.id)}
-                              className="p-1.5 bg-red-50 border border-red-100 hover:bg-red-100 rounded-lg text-red-600 transition cursor-pointer"
-                              title="Delete Video"
-                            >
-                              <Trash2 className="w-3.5 h-3.5" />
-                            </button>
+                        ))
+                      )}
+                    </div>
+
+                    {/* Mathematics Group */}
+                    <div className="space-y-2 border-t border-gray-50 pt-2">
+                      <h4 className="text-[11px] font-black text-gray-500 uppercase tracking-wider flex items-center gap-1">
+                        <span>📐 Mathematics</span>
+                        <span className="text-[10px] font-bold text-gray-400">
+                          ({(playlists.find(p => p.id === "class-10-free-batch")?.videos?.filter(v => v.subject === "Mathematics")?.length || 0)})
+                        </span>
+                      </h4>
+                      {!(playlists.find(p => p.id === "class-10-free-batch")?.videos?.filter(v => v.subject === "Mathematics")?.length) ? (
+                        <p className="text-[11px] text-gray-400 italic pl-2 py-1">No Mathematics video lectures registered yet.</p>
+                      ) : (
+                        playlists.find(p => p.id === "class-10-free-batch")?.videos?.filter(v => v.subject === "Mathematics").map((vid) => (
+                          <div key={vid.id} className="p-3 bg-slate-50 border border-gray-100 rounded-xl flex justify-between items-center gap-4 hover:border-purple-200 transition">
+                            <div className="flex gap-3 items-center min-w-0 flex-1">
+                              {vid.thumbnail && (
+                                <img src={vid.thumbnail} alt="" className="w-10 h-8 object-cover rounded border border-gray-100 shrink-0" referrerPolicy="no-referrer" />
+                              )}
+                              <div className="space-y-0.5 min-w-0">
+                                <h5 className="text-xs sm:text-sm font-bold text-navy-950 truncate">{vid.title}</h5>
+                                <p className="text-[11px] text-gray-400 line-clamp-1">{vid.description || "No description provided."}</p>
+                                <div className="flex items-center gap-1.5 text-[10px] text-gray-400">
+                                  {vid.embedCode ? (
+                                    <span className="font-mono bg-white px-1.5 py-0.5 rounded border border-gray-200 text-red-500 truncate">
+                                      YouTube: {vid.embedCode}
+                                    </span>
+                                  ) : (
+                                    <span className="font-mono bg-white px-1.5 py-0.5 rounded border border-gray-200 text-emerald-600 truncate">
+                                      Local Video File
+                                    </span>
+                                  )}
+                                </div>
+                              </div>
+                            </div>
+                            <div className="flex gap-1.5 shrink-0">
+                              <button
+                                onClick={() => handlePmEditVideo("class-10-free-batch", vid)}
+                                className="p-1.5 bg-white border border-gray-200 hover:bg-slate-100 rounded-lg text-gray-600 transition cursor-pointer"
+                                title="Edit Video"
+                              >
+                                <Edit className="w-3.5 h-3.5" />
+                              </button>
+                              <button
+                                onClick={() => handlePmDeleteVideo("class-10-free-batch", vid.id)}
+                                className="p-1.5 bg-red-50 border border-red-100 hover:bg-red-100 rounded-lg text-red-600 transition cursor-pointer"
+                                title="Delete Video"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
                           </div>
-                        </div>
-                      ))
-                    )}
+                        ))
+                      )}
+                    </div>
                   </div>
                 </div>
 
@@ -1320,40 +1624,114 @@ export default function AdminDashboard({ email, onLogout, onGoHome }: AdminDashb
                     </span>
                   </div>
 
-                  <div className="space-y-3 max-h-[300px] overflow-y-auto pr-1">
-                    {!(playlists.find(p => p.id === "class-12-free-batch")?.videos?.length) ? (
-                      <p className="text-xs text-gray-400 italic py-4 text-center">No video lectures registered yet under Class 12th Free Batch.</p>
-                    ) : (
-                      playlists.find(p => p.id === "class-12-free-batch")?.videos?.map((vid) => (
-                        <div key={vid.id} className="p-3 bg-slate-50 border border-gray-100 rounded-xl flex justify-between items-center gap-4 hover:border-blue-200 transition">
-                          <div className="space-y-1 min-w-0 flex-1">
-                            <h4 className="text-xs sm:text-sm font-bold text-navy-950 truncate">{vid.title}</h4>
-                            <p className="text-[11px] text-gray-400 line-clamp-1">{vid.description || "No description provided."}</p>
-                            <div className="flex items-center gap-2 text-[10px] text-gray-400">
-                              <span className="font-mono bg-white px-1.5 py-0.5 rounded border border-gray-200 text-gray-500 truncate">
-                                YouTube: {vid.embedCode}
-                              </span>
+                  <div className="space-y-4 max-h-[500px] overflow-y-auto pr-1">
+                    {/* Science Group */}
+                    <div className="space-y-2">
+                      <h4 className="text-[11px] font-black text-gray-500 uppercase tracking-wider flex items-center gap-1">
+                        <span>🧪 Science</span>
+                        <span className="text-[10px] font-bold text-gray-400">
+                          ({(playlists.find(p => p.id === "class-12-free-batch")?.videos?.filter(v => v.subject === "Science" || !v.subject)?.length || 0)})
+                        </span>
+                      </h4>
+                      {!(playlists.find(p => p.id === "class-12-free-batch")?.videos?.filter(v => v.subject === "Science" || !v.subject)?.length) ? (
+                        <p className="text-[11px] text-gray-400 italic pl-2 py-1">No Science video lectures registered yet.</p>
+                      ) : (
+                        playlists.find(p => p.id === "class-12-free-batch")?.videos?.filter(v => v.subject === "Science" || !v.subject).map((vid) => (
+                          <div key={vid.id} className="p-3 bg-slate-50 border border-gray-100 rounded-xl flex justify-between items-center gap-4 hover:border-blue-200 transition">
+                            <div className="flex gap-3 items-center min-w-0 flex-1">
+                              {vid.thumbnail && (
+                                <img src={vid.thumbnail} alt="" className="w-10 h-8 object-cover rounded border border-gray-100 shrink-0" referrerPolicy="no-referrer" />
+                              )}
+                              <div className="space-y-0.5 min-w-0">
+                                <h5 className="text-xs sm:text-sm font-bold text-navy-950 truncate">{vid.title}</h5>
+                                <p className="text-[11px] text-gray-400 line-clamp-1">{vid.description || "No description provided."}</p>
+                                <div className="flex items-center gap-1.5 text-[10px] text-gray-400">
+                                  {vid.embedCode ? (
+                                    <span className="font-mono bg-white px-1.5 py-0.5 rounded border border-gray-200 text-red-500 truncate">
+                                      YouTube: {vid.embedCode}
+                                    </span>
+                                  ) : (
+                                    <span className="font-mono bg-white px-1.5 py-0.5 rounded border border-gray-200 text-emerald-600 truncate">
+                                      Local Video File
+                                    </span>
+                                  )}
+                                </div>
+                              </div>
+                            </div>
+                            <div className="flex gap-1.5 shrink-0">
+                              <button
+                                onClick={() => handlePmEditVideo("class-12-free-batch", vid)}
+                                className="p-1.5 bg-white border border-gray-200 hover:bg-slate-100 rounded-lg text-gray-600 transition cursor-pointer"
+                                title="Edit Video"
+                              >
+                                <Edit className="w-3.5 h-3.5" />
+                              </button>
+                              <button
+                                onClick={() => handlePmDeleteVideo("class-12-free-batch", vid.id)}
+                                className="p-1.5 bg-red-50 border border-red-100 hover:bg-red-100 rounded-lg text-red-600 transition cursor-pointer"
+                                title="Delete Video"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
                             </div>
                           </div>
-                          <div className="flex gap-1.5 shrink-0">
-                            <button
-                              onClick={() => handlePmEditVideo("class-12-free-batch", vid)}
-                              className="p-1.5 bg-white border border-gray-200 hover:bg-slate-100 rounded-lg text-gray-600 transition cursor-pointer"
-                              title="Edit Video"
-                            >
-                              <Edit className="w-3.5 h-3.5" />
-                            </button>
-                            <button
-                              onClick={() => handlePmDeleteVideo("class-12-free-batch", vid.id)}
-                              className="p-1.5 bg-red-50 border border-red-100 hover:bg-red-100 rounded-lg text-red-600 transition cursor-pointer"
-                              title="Delete Video"
-                            >
-                              <Trash2 className="w-3.5 h-3.5" />
-                            </button>
+                        ))
+                      )}
+                    </div>
+
+                    {/* Mathematics Group */}
+                    <div className="space-y-2 border-t border-gray-50 pt-2">
+                      <h4 className="text-[11px] font-black text-gray-500 uppercase tracking-wider flex items-center gap-1">
+                        <span>📐 Mathematics</span>
+                        <span className="text-[10px] font-bold text-gray-400">
+                          ({(playlists.find(p => p.id === "class-12-free-batch")?.videos?.filter(v => v.subject === "Mathematics")?.length || 0)})
+                        </span>
+                      </h4>
+                      {!(playlists.find(p => p.id === "class-12-free-batch")?.videos?.filter(v => v.subject === "Mathematics")?.length) ? (
+                        <p className="text-[11px] text-gray-400 italic pl-2 py-1">No Mathematics video lectures registered yet.</p>
+                      ) : (
+                        playlists.find(p => p.id === "class-12-free-batch")?.videos?.filter(v => v.subject === "Mathematics").map((vid) => (
+                          <div key={vid.id} className="p-3 bg-slate-50 border border-gray-100 rounded-xl flex justify-between items-center gap-4 hover:border-blue-200 transition">
+                            <div className="flex gap-3 items-center min-w-0 flex-1">
+                              {vid.thumbnail && (
+                                <img src={vid.thumbnail} alt="" className="w-10 h-8 object-cover rounded border border-gray-100 shrink-0" referrerPolicy="no-referrer" />
+                              )}
+                              <div className="space-y-0.5 min-w-0">
+                                <h5 className="text-xs sm:text-sm font-bold text-navy-950 truncate">{vid.title}</h5>
+                                <p className="text-[11px] text-gray-400 line-clamp-1">{vid.description || "No description provided."}</p>
+                                <div className="flex items-center gap-1.5 text-[10px] text-gray-400">
+                                  {vid.embedCode ? (
+                                    <span className="font-mono bg-white px-1.5 py-0.5 rounded border border-gray-200 text-red-500 truncate">
+                                      YouTube: {vid.embedCode}
+                                    </span>
+                                  ) : (
+                                    <span className="font-mono bg-white px-1.5 py-0.5 rounded border border-gray-200 text-emerald-600 truncate">
+                                      Local Video File
+                                    </span>
+                                  )}
+                                </div>
+                              </div>
+                            </div>
+                            <div className="flex gap-1.5 shrink-0">
+                              <button
+                                onClick={() => handlePmEditVideo("class-12-free-batch", vid)}
+                                className="p-1.5 bg-white border border-gray-200 hover:bg-slate-100 rounded-lg text-gray-600 transition cursor-pointer"
+                                title="Edit Video"
+                              >
+                                <Edit className="w-3.5 h-3.5" />
+                              </button>
+                              <button
+                                onClick={() => handlePmDeleteVideo("class-12-free-batch", vid.id)}
+                                className="p-1.5 bg-red-50 border border-red-100 hover:bg-red-100 rounded-lg text-red-600 transition cursor-pointer"
+                                title="Delete Video"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
                           </div>
-                        </div>
-                      ))
-                    )}
+                        ))
+                      )}
+                    </div>
                   </div>
                 </div>
 

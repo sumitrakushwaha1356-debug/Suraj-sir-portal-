@@ -26,6 +26,62 @@ import { Playlist, Video, PaymentRequest } from "../../types";
 import { getPlaylists, getPaymentRequests, createPaymentRequest, db, getPurchases } from "../../lib/firebase";
 import { onSnapshot, collection } from "firebase/firestore";
 
+const getYoutubeVideoId = (vid: Video | string): string => {
+  const input = typeof vid === "string" ? vid : (vid.embedCode || vid.videoUrl || "");
+  if (!input) return "";
+  
+  const trimmed = input.trim();
+  
+  // If it's already just an 11-character video ID
+  if (/^[a-zA-Z0-9_-]{11}$/.test(trimmed)) {
+    return trimmed;
+  }
+  
+  // Match patterns for youtu.be, youtube.com, m.youtube.com, etc.
+  const regexes = [
+    /youtube\.com\/watch\?v=([a-zA-Z0-9_-]{11})/,
+    /youtu\.be\/([a-zA-Z0-9_-]{11})/,
+    /youtube\.com\/embed\/([a-zA-Z0-9_-]{11})/,
+    /youtube\.com\/v\/([a-zA-Z0-9_-]{11})/,
+    /youtube\.com\/shorts\/([a-zA-Z0-9_-]{11})/,
+    /m\.youtube\.com\/watch\?v=([a-zA-Z0-9_-]{11})/,
+  ];
+  
+  for (const regex of regexes) {
+    const match = trimmed.match(regex);
+    if (match && match[1] && match[1].length === 11) {
+      return match[1];
+    }
+  }
+  
+  // Extra checks
+  const vParamMatch = trimmed.match(/[?&]v=([a-zA-Z0-9_-]{11})/);
+  if (vParamMatch && vParamMatch[1]) {
+    return vParamMatch[1];
+  }
+
+  const embedMatch = trimmed.match(/\/embed\/([a-zA-Z0-9_-]{11})/);
+  if (embedMatch && embedMatch[1]) {
+    return embedMatch[1];
+  }
+
+  try {
+    const urlObj = new URL(trimmed);
+    const pathParts = urlObj.pathname.split("/");
+    const lastPart = pathParts[pathParts.length - 1];
+    if (lastPart && /^[a-zA-Z0-9_-]{11}$/.test(lastPart)) {
+      return lastPart;
+    }
+  } catch (e) {
+    const fallbackMatch = trimmed.match(/v=([a-zA-Z0-9_-]{11})/);
+    if (fallbackMatch && fallbackMatch[1]) {
+      return fallbackMatch[1];
+    }
+  }
+
+  return "";
+};
+
 interface VideosTabProps {
   onGoHome?: () => void;
 }
@@ -605,6 +661,12 @@ export default function VideosTab({ onGoHome }: VideosTabProps) {
 
   // 4. ACTIVE VIDEO PLAYER VIEW (FOR UNLOCKED PLAYLISTS)
   if (currentVideo && selectedPlaylist && !selectedPlaylist.locked) {
+    const videoId = getYoutubeVideoId(currentVideo);
+    const playlistVideos = selectedPlaylist.videos || [];
+    const lectureIndex = playlistVideos.findIndex(v => v.id === currentVideo.id);
+    const lectureNumber = lectureIndex !== -1 ? lectureIndex + 1 : 1;
+    const subjectName = currentVideo.subject || selectedSubject || (selectedPlaylist.classLevel === "Class 10" || selectedPlaylist.classLevel === "10th" ? "Science" : "Physics / Chemistry");
+
     return (
       <div className="space-y-6">
         {/* Navigation Breadcrumb */}
@@ -639,17 +701,23 @@ export default function VideosTab({ onGoHome }: VideosTabProps) {
           {/* Main Integrated Video Player */}
           <div className="lg:col-span-8 space-y-4">
             <div className="relative bg-black rounded-3xl overflow-hidden shadow-xl aspect-video border border-navy-950">
-              {currentVideo.videoUrl ? (
-                <video
-                  controls
-                  autoPlay
-                  src={currentVideo.videoUrl}
-                  className="absolute inset-0 w-full h-full bg-black"
-                />
+              {!videoId ? (
+                <div className="absolute inset-0 flex flex-col items-center justify-center bg-slate-900 text-white p-6 text-center space-y-3">
+                  <div className="w-16 h-16 rounded-full bg-rose-500/10 flex items-center justify-center border border-rose-500/20">
+                    <AlertCircle className="w-8 h-8 text-rose-500 animate-bounce" />
+                  </div>
+                  <div className="space-y-1">
+                    <h3 className="font-display font-bold text-lg text-rose-400">Invalid YouTube Video Link</h3>
+                    <p className="text-xs text-slate-400 max-w-md mx-auto">
+                      The lecture video URL or embed code could not be resolved. Please edit it from the administrator panel.
+                    </p>
+                  </div>
+                </div>
               ) : (
                 <iframe
+                  key={videoId}
                   title={currentVideo.title}
-                  src={`https://www.youtube.com/embed/${currentVideo.embedCode}?autoplay=1&rel=0&modestbranding=1`}
+                  src={`https://www.youtube.com/embed/${videoId}?autoplay=1&rel=0&modestbranding=1`}
                   allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
                   allowFullScreen
                   className="absolute inset-0 w-full h-full"
@@ -658,23 +726,39 @@ export default function VideosTab({ onGoHome }: VideosTabProps) {
             </div>
 
             {/* Video details */}
-            <div className="bg-white border border-gray-100 p-6 rounded-3xl shadow-sm space-y-3">
-              <div className="flex justify-between items-start gap-4">
-                <h2 className="font-display text-lg sm:text-xl font-bold text-navy-950">
-                  {currentVideo.title}
-                </h2>
-                <div className="flex items-center gap-1 text-xs text-gray-500 bg-slate-50 border border-gray-100 px-2.5 py-1 rounded-full shrink-0 font-medium">
-                  <Clock className="w-3.5 h-3.5 text-primary-500" />
-                  <span>{currentVideo.duration}</span>
-                </div>
+            <div className="bg-white border border-gray-100 p-6 rounded-3xl shadow-sm space-y-4">
+              <div className="flex flex-wrap gap-2 items-center">
+                <span className="inline-flex items-center gap-1 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wider bg-primary-50 text-primary-700 rounded-full border border-primary-100">
+                  Lecture #{lectureNumber}
+                </span>
+                <span className="inline-flex items-center gap-1 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wider bg-navy-50 text-navy-700 rounded-full border border-navy-100">
+                  {selectedPlaylist.title}
+                </span>
+                <span className="inline-flex items-center gap-1 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wider bg-amber-50 text-amber-700 rounded-full border border-amber-100">
+                  Subject: {subjectName}
+                </span>
               </div>
-              <p className="text-xs text-gray-500 leading-relaxed font-light">
-                {currentVideo.description}
-              </p>
+
+              <div className="space-y-2">
+                <div className="flex justify-between items-start gap-4">
+                  <h2 className="font-display text-lg sm:text-xl font-bold text-navy-950 leading-tight">
+                    {currentVideo.title}
+                  </h2>
+                  <div className="flex items-center gap-1 text-xs text-gray-500 bg-slate-50 border border-gray-100 px-2.5 py-1 rounded-full shrink-0 font-medium">
+                    <Clock className="w-3.5 h-3.5 text-primary-500" />
+                    <span>{currentVideo.duration}</span>
+                  </div>
+                </div>
+                {currentVideo.description && (
+                  <p className="text-xs text-gray-500 leading-relaxed font-light">
+                    {currentVideo.description}
+                  </p>
+                )}
+              </div>
               
-              <div className="pt-4 border-t border-gray-100 flex items-center justify-between text-xs">
+              <div className="pt-4 border-t border-gray-100 flex flex-wrap gap-y-2 items-center justify-between text-xs">
                 <span className="text-gray-400">Class Batch: IIT-JEE Elite Masterclass ({selectedPlaylist.classLevel || "Class 12"})</span>
-                <span className="text-emerald-600 font-bold flex items-center gap-1 bg-emerald-50 px-2 rounded-full">
+                <span className="text-emerald-600 font-bold flex items-center gap-1 bg-emerald-50 px-2.5 py-1 rounded-full border border-emerald-100">
                   <CheckCircle2 className="w-3.5 h-3.5" /> Checked
                 </span>
               </div>
@@ -966,8 +1050,22 @@ export default function VideosTab({ onGoHome }: VideosTabProps) {
             }
           });
 
+          const getThumbnailUrl = (vid: any) => {
+            if (vid.thumbnail && vid.thumbnail.trim() !== "") {
+              return vid.thumbnail;
+            }
+            const ytId = getYoutubeVideoId(vid);
+            if (ytId) {
+              return `https://img.youtube.com/vi/${ytId}/hqdefault.jpg`;
+            }
+            // Dynamic subject-based aesthetic illustrations from Unsplash
+            return selectedSubject === "Science"
+              ? "https://images.unsplash.com/photo-1532094349884-543bc11b234d?auto=format&fit=crop&q=80&w=400"
+              : "https://images.unsplash.com/photo-1509228468518-180dd4864904?auto=format&fit=crop&q=80&w=400";
+          };
+
           return (
-            <div className="space-y-4">
+            <div className="space-y-6">
               <div className="flex items-center justify-between border-t border-slate-100 pt-6">
                 <div className="flex items-center gap-2">
                   <span className="text-2xl">{selectedSubject === "Science" ? "🧪" : "📐"}</span>
@@ -985,66 +1083,96 @@ export default function VideosTab({ onGoHome }: VideosTabProps) {
                 </button>
               </div>
               
-              <div className="grid grid-cols-1 gap-3.5">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
                 {filteredVideos.length > 0 ? (
-                  filteredVideos.map((vid, idx) => (
-                    <div
-                      key={vid.id}
-                      onClick={() => !isLocked && handlePlayVideo(vid)}
-                      className={`bg-white border rounded-2xl p-4 sm:p-5 transition-all flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 group ${
-                        isLocked 
-                          ? "border-gray-100 opacity-60 cursor-not-allowed select-none" 
-                          : "border-gray-100 hover:border-primary-400 hover:shadow-md cursor-pointer"
-                      }`}
-                    >
-                      <div className="flex items-start gap-4">
-                        <div className={`w-10 h-10 rounded-xl font-bold font-mono text-sm flex items-center justify-center shrink-0 transition-all ${
+                  filteredVideos.map((vid, idx) => {
+                    const thumbnailUrl = getThumbnailUrl(vid);
+                    return (
+                      <div
+                        key={vid.id || idx}
+                        onClick={() => !isLocked && handlePlayVideo(vid)}
+                        className={`bg-white border rounded-3xl overflow-hidden shadow-sm transition-all duration-300 flex flex-col h-full group ${
                           isLocked 
-                            ? "bg-slate-100 text-slate-400" 
-                            : "bg-primary-50 text-primary-600 group-hover:bg-primary-600 group-hover:text-white"
-                        }`}>
-                          {isLocked ? <Lock className="w-4 h-4" /> : idx + 1}
-                        </div>
-                        <div className="space-y-1">
-                          <h4 className={`text-sm font-bold transition ${
-                            isLocked ? "text-gray-400" : "text-navy-950 group-hover:text-primary-700"
-                          }`}>
-                            {vid.title}
-                          </h4>
-                          <p className="text-xs text-gray-400 line-clamp-1 max-w-xl font-light">
-                            {vid.description}
-                          </p>
-                          <span className="inline-flex items-center gap-1 text-[11px] font-medium text-gray-500 bg-slate-50 border border-gray-100 px-2 py-0.5 rounded-md">
-                            <Clock className="w-3 h-3 text-primary-500" /> {vid.duration}
-                          </span>
-                        </div>
-                      </div>
-
-                      <button
-                        type="button"
-                        disabled={isLocked}
-                        className={`py-2 px-4 rounded-xl text-xs font-bold flex items-center gap-1.5 self-end sm:self-center shrink-0 transition ${
-                          isLocked 
-                            ? "bg-slate-50 text-slate-400 border border-slate-100" 
-                            : "bg-primary-50 group-hover:bg-primary-600 text-primary-700 group-hover:text-white"
+                            ? "border-gray-100 opacity-60 cursor-not-allowed select-none" 
+                            : "border-gray-100 hover:border-primary-300 hover:shadow-lg cursor-pointer"
                         }`}
                       >
-                        {isLocked ? (
-                          <>
-                            <Lock className="w-3.5 h-3.5" />
-                            <span>Locked</span>
-                          </>
-                        ) : (
-                          <>
-                            <Play className="w-3.5 h-3.5 fill-current" />
-                            <span>Play Lecture</span>
-                          </>
-                        )}
-                      </button>
-                    </div>
-                  ))
+                        {/* Video Thumbnail Area with Hover Play Overlay */}
+                        <div className="relative aspect-video overflow-hidden bg-navy-950 shrink-0">
+                          <img
+                            src={thumbnailUrl}
+                            alt={vid.title}
+                            className="w-full h-full object-cover transform group-hover:scale-105 transition duration-500"
+                            referrerPolicy="no-referrer"
+                          />
+                          <div className="absolute inset-0 bg-navy-950/20 group-hover:bg-navy-950/40 transition duration-300 flex items-center justify-center">
+                            {!isLocked && (
+                              <div className="w-12 h-12 rounded-full bg-white/95 shadow-lg backdrop-blur-sm flex items-center justify-center text-primary-600 scale-90 opacity-0 group-hover:scale-100 group-hover:opacity-100 transition-all duration-300">
+                                <Play className="w-5 h-5 fill-current ml-0.5" />
+                              </div>
+                            )}
+                          </div>
+
+                          {/* Duration Overlay Badge */}
+                          {vid.duration && (
+                            <span className="absolute bottom-3 right-3 bg-navy-950/80 backdrop-blur-sm border border-white/10 px-2 py-0.5 rounded-md text-[10px] font-mono text-white font-black">
+                              {vid.duration}
+                            </span>
+                          )}
+
+                          {/* Subject Badge */}
+                          <span className="absolute top-3 left-3 bg-primary-950/70 border border-primary-500/30 px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider text-primary-300">
+                            {selectedSubject}
+                          </span>
+                        </div>
+
+                        {/* Content & Action Info */}
+                        <div className="p-5 flex-1 flex flex-col justify-between space-y-4">
+                          <div className="space-y-1.5">
+                            <h4 className={`text-sm sm:text-base font-bold transition line-clamp-2 leading-tight ${
+                              isLocked ? "text-gray-400" : "text-navy-950 group-hover:text-primary-700"
+                            }`}>
+                              {vid.title}
+                            </h4>
+                            <p className="text-xs text-gray-400 line-clamp-2 leading-relaxed font-light">
+                              {vid.description || "No lecture notes or description registered for this chapter."}
+                            </p>
+                          </div>
+
+                          {/* Play Button & Index Row */}
+                          <div className="pt-3 border-t border-gray-50 flex items-center justify-between">
+                            <button
+                              type="button"
+                              disabled={isLocked}
+                              className={`py-2 px-3.5 rounded-xl text-xs font-bold flex items-center gap-1.5 transition cursor-pointer ${
+                                isLocked 
+                                  ? "bg-slate-50 text-slate-400 border border-slate-100" 
+                                  : "bg-primary-50 text-primary-700 group-hover:bg-primary-600 group-hover:text-white"
+                              }`}
+                            >
+                              {isLocked ? (
+                                <>
+                                  <Lock className="w-3.5 h-3.5" />
+                                  <span>Locked</span>
+                                </>
+                              ) : (
+                                <>
+                                  <Play className="w-3.5 h-3.5 fill-current" />
+                                  <span>Play Lecture</span>
+                                </>
+                              )}
+                            </button>
+
+                            <span className="text-[10px] text-gray-400 font-mono font-bold uppercase tracking-wider">
+                              Chapter {idx + 1}
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })
                 ) : (
-                  <div className="bg-white border border-gray-100 rounded-[24px] p-12 text-center space-y-4 shadow-sm">
+                  <div className="col-span-full bg-white border border-gray-100 rounded-[24px] p-12 text-center space-y-4 shadow-sm">
                     <div className="w-14 h-14 rounded-2xl bg-primary-50 border border-primary-100 flex items-center justify-center text-primary-600 mx-auto">
                       <VideoIcon className="w-6 h-6" />
                     </div>

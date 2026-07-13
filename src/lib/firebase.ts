@@ -12,6 +12,7 @@ import {
   query,
   where
 } from "firebase/firestore";
+import { getStorage, ref, uploadBytesResumable, getDownloadURL } from "firebase/storage";
 import bcrypt from "bcryptjs";
 
 // Hardcoded safe parameters matching our migrated Google/Firebase Project
@@ -29,6 +30,35 @@ const app = initializeApp(firebaseConfig);
 export const auth = getAuth(app);
 export const googleProvider = new GoogleAuthProvider();
 export const db = getFirestore(app);
+export const storage = getStorage(app);
+
+export const uploadFileToStorage = (file: File, path: string, onProgress?: (progress: number) => void): Promise<string> => {
+  return new Promise((resolve, reject) => {
+    const storageRef = ref(storage, path);
+    const uploadTask = uploadBytesResumable(storageRef, file);
+
+    uploadTask.on(
+      "state_changed",
+      (snapshot) => {
+        const progress = (snapshot.bytesTransferred / snapshot.totalBytes) * 100;
+        if (onProgress) {
+          onProgress(progress);
+        }
+      },
+      (error) => {
+        reject(error);
+      },
+      async () => {
+        try {
+          const downloadURL = await getDownloadURL(uploadTask.snapshot.ref);
+          resolve(downloadURL);
+        } catch (err) {
+          reject(err);
+        }
+      }
+    );
+  });
+};
 
 googleProvider.setCustomParameters({
   prompt: "select_account"
@@ -138,6 +168,70 @@ const PLAYLISTS_DATA_SEED = [
         description: "Understand ortho-, para-, and meta-directors on benzene. Learn mechanism steps: generation of electrophile, sigma complex, and deprotonation."
       }
     ]
+  },
+  {
+    id: "class-10-free-batch",
+    title: "Class 10th Free Batch",
+    thumbnail: "https://images.unsplash.com/photo-1532187863486-abf9d39d66e8?auto=format&fit=crop&q=80&w=400",
+    videoCount: 5,
+    description: "All-in-one free coaching batch designed for Class 10th boards preparation and fundamental concepts covering Math, Science & more.",
+    classLevel: "Class 10",
+    videos: [
+      {
+        id: "c10-s1",
+        title: "Prakash ka Paravartan | Reflection of Light Class 10 Physics | Ray Diagram Easy Explanation | Hindi",
+        duration: "45:20",
+        embedCode: "_FSKjiotREo",
+        description: "Chapter 1 Reflection of Light full detailed explanation with easy ray diagram animations and Hindi commentary by Suraj Sir.",
+        subject: "Science",
+        thumbnail: "https://img.youtube.com/vi/_FSKjiotREo/hqdefault.jpg"
+      },
+      {
+        id: "c10-s2",
+        title: "Manav Netra ev Rang Viranga Sansar | Human Eye & Colourful World | Class 10 Science",
+        duration: "52:15",
+        embedCode: "4ds0eiFnYhE",
+        description: "Chapter 2 Human Eye & Colorful World complete detailed explanation of human eye parts, defects and their corrections.",
+        subject: "Science",
+        thumbnail: "https://img.youtube.com/vi/4ds0eiFnYhE/hqdefault.jpg"
+      },
+      {
+        id: "c10-s3",
+        title: "Vidhut Class 10 ⚡ Complete Chapter in One Shot | Board Exam 2026",
+        duration: "1:12:40",
+        embedCode: "WrtsWQpB7Kg",
+        description: "Electricity complete chapter in one shot for CBSE / State Board Exams 2026. Formulas, derivations and question sheet included.",
+        subject: "Science",
+        thumbnail: "https://img.youtube.com/vi/WrtsWQpB7Kg/hqdefault.jpg"
+      },
+      {
+        id: "c10-s4",
+        title: "Electric Current & Magnetism Explained 🔥 | Vidhut Dhara aur Chumbakatva",
+        duration: "38:50",
+        embedCode: "YU6peT7ORM4",
+        description: "Magnetic Effects of Electric Current full chapter explained simply with real-world examples and interactive field drawings.",
+        subject: "Science",
+        thumbnail: "https://img.youtube.com/vi/YU6peT7ORM4/hqdefault.jpg"
+      },
+      {
+        id: "c10-s5",
+        title: "Rasayanik Abhikriya aur Samikaran | NCERT Class 10 Science Hindi Medium",
+        duration: "48:10",
+        embedCode: "Qw0-1HffQkE",
+        description: "Chemical Reactions and Equations complete explanation in Hindi Medium based on latest NCERT textbooks.",
+        subject: "Science",
+        thumbnail: "https://img.youtube.com/vi/Qw0-1HffQkE/hqdefault.jpg"
+      }
+    ]
+  },
+  {
+    id: "class-12-free-batch",
+    title: "Class 12th Free Batch",
+    thumbnail: "https://images.unsplash.com/photo-1614064641938-3bbee52942c7?auto=format&fit=crop&q=80&w=400",
+    videoCount: 0,
+    description: "Comprehensive free batch covering Class 12th board syllabus, advanced board exams concepts and exercises with Suraj Sir.",
+    classLevel: "Class 12",
+    videos: []
   }
 ];
 
@@ -327,11 +421,95 @@ export function handleFirestoreError(error: unknown, operationType: OperationTyp
 
 export const seedDatabaseIfEmpty = async () => {
   try {
+    const cleanYoutubeId = (url: string) => {
+      if (!url) return "";
+      const trimmed = url.trim();
+      if (trimmed.length === 11 && !trimmed.includes("/") && !trimmed.includes("?")) {
+        return trimmed;
+      }
+      const regExp = /^.*(youtu.be\/|v\/|u\/\w\/|embed\/|watch\?v=|\&v=|shorts\/)([^#\&\?]*).*/;
+      const match = trimmed.match(regExp);
+      if (match && match[2] && match[2].length === 11) {
+        return match[2];
+      }
+      try {
+        const urlObj = new URL(trimmed);
+        const vParam = urlObj.searchParams.get("v");
+        if (vParam && vParam.length === 11) {
+          return vParam;
+        }
+      } catch (e) {
+        // ignore
+      }
+      return trimmed;
+    };
+
     const playlistsSnap = await getDocs(collection(db, "playlists"));
     if (playlistsSnap.empty) {
       console.log("Seeding playlists...");
       for (const pl of PLAYLISTS_DATA_SEED) {
         await setDoc(doc(db, "playlists", pl.id), pl);
+      }
+    } else {
+      const docsList = playlistsSnap.docs;
+      const c10Doc = docsList.find(d => d.id === "class-10-free-batch");
+      
+      if (!c10Doc) {
+        console.log("Seeding missing Class 10 Free Batch...");
+        const c10Playlist = PLAYLISTS_DATA_SEED.find(p => p.id === "class-10-free-batch");
+        if (c10Playlist) {
+          await setDoc(doc(db, "playlists", "class-10-free-batch"), c10Playlist);
+        }
+      } else {
+        const data = c10Doc.data();
+        const hasSeededVideos = data.videos && data.videos.some((v: any) => v.id === "c10-s1");
+        if (!hasSeededVideos) {
+          console.log("Merging seeded Science videos into Class 10 Free Batch...");
+          const c10Playlist = PLAYLISTS_DATA_SEED.find(p => p.id === "class-10-free-batch");
+          if (c10Playlist) {
+            const existingVideos = data.videos || [];
+            const newVideos = [...existingVideos];
+            for (const v of c10Playlist.videos) {
+              if (!newVideos.some((x: any) => x.id === v.id || x.title === v.title)) {
+                newVideos.push(v);
+              }
+            }
+            await setDoc(doc(db, "playlists", "class-10-free-batch"), {
+              ...data,
+              videos: newVideos
+            }, { merge: true });
+          }
+        }
+      }
+
+      const c12Doc = docsList.find(d => d.id === "class-12-free-batch");
+      if (!c12Doc) {
+        console.log("Seeding missing Class 12 Free Batch...");
+        const c12Playlist = PLAYLISTS_DATA_SEED.find(p => p.id === "class-12-free-batch");
+        if (c12Playlist) {
+          await setDoc(doc(db, "playlists", "class-12-free-batch"), c12Playlist);
+        }
+      }
+    }
+
+    // Proactive database cleanup: scan all existing playlists and sanitize youtube links to 11-char IDs
+    const latestPlaylistsSnap = await getDocs(collection(db, "playlists"));
+    for (const plDoc of latestPlaylistsSnap.docs) {
+      const plData = plDoc.data();
+      const videos = plData.videos || [];
+      let updated = false;
+      const cleanedVideos = videos.map((v: any) => {
+        const rawCode = v.embedCode || "";
+        const cleanCode = cleanYoutubeId(rawCode);
+        if (rawCode !== cleanCode) {
+          updated = true;
+          return { ...v, embedCode: cleanCode };
+        }
+        return v;
+      });
+      if (updated) {
+        console.log(`Cleaning up youtube URLs in playlist: ${plDoc.id}`);
+        await setDoc(doc(db, "playlists", plDoc.id), { ...plData, videos: cleanedVideos }, { merge: true });
       }
     }
     
