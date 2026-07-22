@@ -23,6 +23,7 @@ import { StudentProfile } from "../types";
 import HomeTab from "./dashboard/HomeTab";
 import VideosTab from "./dashboard/VideosTab";
 import BooksTab from "./dashboard/BooksTab";
+import Footer from "./Footer";
 import TestsTab from "./dashboard/TestsTab";
 import ProfileTab from "./dashboard/ProfileTab";
 import Class12BatchSection from "./Class12BatchSection";
@@ -374,16 +375,7 @@ export default function StudentDashboard({ email, onLogout, onGoHome }: StudentD
         </main>
 
         {/* Footer */}
-        <footer className="bg-white border-t border-gray-100 px-6 py-4 text-center text-[11px] text-gray-400 max-w-7xl mx-auto w-full">
-          <div className="flex flex-col sm:flex-row justify-between items-center gap-2">
-            <span>&copy; {new Date().getFullYear()} Suraj Sir Education. Dynamic Campus environment.</span>
-            <div className="flex gap-4">
-              <a href="#support" onClick={(e) => e.preventDefault()} className="hover:text-primary-600 transition">Online Desk Helpline</a>
-              <span>•</span>
-              <a href="#system" onClick={(e) => e.preventDefault()} className="hover:text-primary-600 transition">Integration Node v1.4.2</a>
-            </div>
-          </div>
-        </footer>
+        <Footer onNavigateTab={setActiveTab} />
 
       </div>
     </div>

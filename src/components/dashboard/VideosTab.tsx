@@ -821,7 +821,7 @@ export default function VideosTab({ email, onGoHome }: VideosTabProps) {
           </div>
 
           {/* Sidebar Lecture Sequence within Playlist */}
-          <div className="lg:col-span-4 bg-white border border-gray-100 rounded-3xl p-5 shadow-sm space-y-4">
+          <div className="lg:col-span-4 bg-white border border-gray-100 rounded-3xl p-5 shadow-sm space-y-4 lg:sticky lg:top-24 self-start">
             <div>
               <h3 className="font-display font-bold text-sm text-navy-950">
                 Lectures in this Playlist

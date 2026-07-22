@@ -164,81 +164,10 @@ export default function Class12BatchSection({ onGoHome }: Class12BatchSectionPro
         </div>
       </div>
 
-      {/* Responsive Grid: Left Sidebar (30%) & Right Video Player (70%) */}
+      {/* Responsive Grid: Video Player (LEFT 70% on Desktop / TOP on Mobile) & Playlist (RIGHT 30% on Desktop / BOTTOM on Mobile) */}
       <div className="row g-4">
         
-        {/* Left Sidebar (30% on desktop) */}
-        <div className="col-12 col-lg-4 col-xl-3">
-          <div className="card shadow-sm border-0 rounded-4 h-100">
-            <div className="card-header bg-white border-bottom py-3 d-flex justify-content-between align-items-center">
-              <h5 className="mb-0 fw-bold text-dark d-flex align-items-center gap-2 fs-6">
-                <i className="bi bi-collection-play-fill text-primary"></i> Batch Lectures ({playlist.length})
-              </h5>
-              <span className="badge bg-success bg-opacity-10 text-success fw-bold rounded-pill px-2.5 py-1 small">
-                Free Batch
-              </span>
-            </div>
-            
-            <div className="card-body p-2 overflow-auto" style={{ maxHeight: "calc(100vh - 220px)" }}>
-              <div className="list-group list-group-flush gap-1">
-                {playlist.map((item, index) => {
-                  const isActive = index === currentIndex;
-                  return (
-                    <button
-                      key={index}
-                      type="button"
-                      onClick={() => setCurrentIndex(index)}
-                      className={`list-group-item list-group-item-action border-0 rounded-3 p-3 transition-all text-start position-relative ${
-                        isActive
-                          ? "bg-primary text-white shadow-sm fw-semibold"
-                          : "bg-white text-dark hover-bg-light border"
-                      }`}
-                      style={{
-                        cursor: "pointer",
-                        transition: "all 0.2s ease-in-out"
-                      }}
-                    >
-                      <div className="d-flex justify-content-between align-items-start mb-1">
-                        <span className={`badge rounded-pill text-uppercase px-2.5 py-1 ${
-                          isActive ? "bg-white text-primary fw-bold" : "bg-light text-secondary border"
-                        }`} style={{ fontSize: "0.725rem" }}>
-                          Lecture {index + 1}
-                        </span>
-                        <span className={`small d-flex align-items-center gap-1 ${
-                          isActive ? "text-white-50" : "text-muted"
-                        }`}>
-                          <i className="bi bi-play-circle"></i> {item.duration || "Video"}
-                        </span>
-                      </div>
-
-                      <div className="d-flex align-items-center justify-content-between mt-2">
-                        <div className="d-flex align-items-center gap-2">
-                          <i className={`bi ${isActive ? "bi-play-circle-fill text-warning fs-5" : "bi-play-circle text-primary fs-5"}`}></i>
-                          <span className={`fw-bold ${isActive ? "text-white" : "text-dark"}`} style={{ fontSize: "0.95rem" }}>
-                            {item.title}
-                          </span>
-                        </div>
-                        {isActive && (
-                          <span className="badge bg-warning text-dark fw-bold rounded-pill px-2 py-0.5" style={{ fontSize: "0.65rem" }}>
-                            NOW PLAYING
-                          </span>
-                        )}
-                      </div>
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-
-            <div className="card-footer bg-light border-top p-3 text-center rounded-bottom-4">
-              <p className="small text-muted mb-0 d-flex align-items-center justify-content-center gap-1">
-                <i className="bi bi-shield-check text-success"></i> Auto-Sync Enabled • Click any lecture to play
-              </p>
-            </div>
-          </div>
-        </div>
-
-        {/* Right Side (70% on desktop) */}
+        {/* Main Video Player & Carousel Column (70% on desktop, Top on mobile/tablet) */}
         <div className="col-12 col-lg-8 col-xl-9">
           
           {/* Carousel ABOVE Video */}
@@ -363,7 +292,7 @@ export default function Class12BatchSection({ onGoHome }: Class12BatchSectionPro
           <div className="card shadow-sm border-0 rounded-4 overflow-hidden mb-4">
             
             {/* Player Bar */}
-            <div className="card-header bg-dark text-white p-3 d-flex align-items-center justify-content-between">
+            <div className="card-header bg-dark text-white p-3 d-flex align-items-center justify-content-between flex-wrap gap-2">
               <div className="d-flex align-items-center gap-2">
                 <span className="badge bg-danger text-white font-monospace">
                   <i className="bi bi-record-circle me-1 animate-pulse"></i> LIVE PLAYER
@@ -389,10 +318,10 @@ export default function Class12BatchSection({ onGoHome }: Class12BatchSectionPro
             </div>
 
             {/* Below Video Meta & Controls */}
-            <div className="card-body p-4 bg-white">
+            <div className="card-body p-3 p-md-4 bg-white">
               <div className="d-flex flex-column flex-md-row justify-content-between align-items-md-start gap-3 border-bottom pb-3 mb-3">
-                <div>
-                  <div className="d-flex align-items-center gap-2 mb-1">
+                <div className="w-100">
+                  <div className="d-flex align-items-center gap-2 mb-1 flex-wrap">
                     <span className="badge bg-primary bg-opacity-10 text-primary fw-bold px-2.5 py-1 rounded-pill">
                       Lecture {currentIndex + 1}
                     </span>
@@ -400,7 +329,7 @@ export default function Class12BatchSection({ onGoHome }: Class12BatchSectionPro
                       <i className="bi bi-clock-history"></i> Duration: {currentLecture.duration || "Full Lecture"}
                     </span>
                   </div>
-                  <h3 className="h4 fw-bold text-dark mb-1">
+                  <h3 className="h5 h4-md fw-bold text-dark mb-1 text-break">
                     {currentLecture.title}
                   </h3>
                   <p className="text-secondary mb-0 small">
@@ -409,7 +338,7 @@ export default function Class12BatchSection({ onGoHome }: Class12BatchSectionPro
                 </div>
 
                 {/* Previous & Next Lecture Buttons */}
-                <div className="d-flex align-items-center gap-2">
+                <div className="d-flex align-items-center gap-2 flex-shrink-0">
                   <button
                     type="button"
                     onClick={handlePrevLecture}
@@ -435,7 +364,7 @@ export default function Class12BatchSection({ onGoHome }: Class12BatchSectionPro
                 <h6 className="fw-bold text-dark mb-2 d-flex align-items-center gap-2">
                   <i className="bi bi-info-circle-fill text-primary"></i> Lecture Overview
                 </h6>
-                <p className="text-muted mb-0 small leading-relaxed" style={{ lineHeight: "1.6" }}>
+                <p className="text-muted mb-0 small leading-relaxed text-break" style={{ lineHeight: "1.6" }}>
                   {currentLecture.description || "In this lecture, Suraj Sir explains key concepts, formula derivations, solved board numericals, and step-by-step solutions."}
                 </p>
               </div>
@@ -443,6 +372,77 @@ export default function Class12BatchSection({ onGoHome }: Class12BatchSectionPro
             </div>
           </div>
 
+        </div>
+
+        {/* Playlist Column (30% on desktop, Bottom on mobile/tablet) */}
+        <div className="col-12 col-lg-4 col-xl-3">
+          <div className="card shadow-sm border-0 rounded-4 sticky-lg-top" style={{ top: "80px" }}>
+            <div className="card-header bg-white border-bottom py-3 d-flex justify-content-between align-items-center">
+              <h5 className="mb-0 fw-bold text-dark d-flex align-items-center gap-2 fs-6">
+                <i className="bi bi-collection-play-fill text-primary"></i> Batch Lectures ({playlist.length})
+              </h5>
+              <span className="badge bg-success bg-opacity-10 text-success fw-bold rounded-pill px-2.5 py-1 small">
+                Free Batch
+              </span>
+            </div>
+            
+            <div className="card-body p-2 overflow-auto" style={{ maxHeight: "calc(100vh - 220px)", minHeight: "300px" }}>
+              <div className="list-group list-group-flush gap-1">
+                {playlist.map((item, index) => {
+                  const isActive = index === currentIndex;
+                  return (
+                    <button
+                      key={index}
+                      type="button"
+                      onClick={() => setCurrentIndex(index)}
+                      className={`list-group-item list-group-item-action border-0 rounded-3 p-3 transition-all text-start position-relative ${
+                        isActive
+                          ? "bg-primary text-white shadow-sm fw-semibold"
+                          : "bg-white text-dark hover-bg-light border"
+                      }`}
+                      style={{
+                        cursor: "pointer",
+                        transition: "all 0.2s ease-in-out"
+                      }}
+                    >
+                      <div className="d-flex justify-content-between align-items-start mb-1">
+                        <span className={`badge rounded-pill text-uppercase px-2.5 py-1 ${
+                          isActive ? "bg-white text-primary fw-bold" : "bg-light text-secondary border"
+                        }`} style={{ fontSize: "0.725rem" }}>
+                          Lecture {index + 1}
+                        </span>
+                        <span className={`small d-flex align-items-center gap-1 ${
+                          isActive ? "text-white-50" : "text-muted"
+                        }`}>
+                          <i className="bi bi-play-circle"></i> {item.duration || "Video"}
+                        </span>
+                      </div>
+
+                      <div className="d-flex align-items-center justify-content-between mt-2 gap-2">
+                        <div className="d-flex align-items-center gap-2 text-break">
+                          <i className={`bi ${isActive ? "bi-play-circle-fill text-warning fs-5" : "bi-play-circle text-primary fs-5"}`}></i>
+                          <span className={`fw-bold ${isActive ? "text-white" : "text-dark"}`} style={{ fontSize: "0.95rem" }}>
+                            {item.title}
+                          </span>
+                        </div>
+                        {isActive && (
+                          <span className="badge bg-warning text-dark fw-bold rounded-pill px-2 py-0.5 shrink-0" style={{ fontSize: "0.65rem" }}>
+                            NOW PLAYING
+                          </span>
+                        )}
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            <div className="card-footer bg-light border-top p-3 text-center rounded-bottom-4">
+              <p className="small text-muted mb-0 d-flex align-items-center justify-content-center gap-1">
+                <i className="bi bi-shield-check text-success"></i> Auto-Sync Enabled • Click any lecture to play
+              </p>
+            </div>
+          </div>
         </div>
 
       </div>

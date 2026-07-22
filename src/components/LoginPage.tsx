@@ -2,6 +2,7 @@ import React, { useState } from "react";
 import { GraduationCap, ShieldCheck, Mail, Lock, ArrowRight, BookOpen, AlertCircle, Video, FileText, BarChart3, Award, Users, Play, Star, UserCheck, Sparkles } from "lucide-react";
 import heroBannerImg from "../assets/images/hero-image.57.33.jpeg";
 import { loginStudent, registerStudent } from "../lib/firebase";
+import Footer from "./Footer";
 
 interface LoginPageProps {
   onStudentLogin: (email: string) => void;
@@ -125,13 +126,7 @@ export default function LoginPage({ onStudentLogin, onAdminLogin }: LoginPagePro
                   <span>Free & Premium Academic Batches (2026-27)</span>
                 </div>
 
-                <h1 className="font-display text-2xl sm:text-4xl md:text-5xl font-black text-white tracking-tight leading-tight drop-shadow-md">
-                  Learn Today, Lead Tomorrow
-                </h1>
-
-                <p className="text-xs sm:text-base text-gray-200 font-normal leading-relaxed opacity-95 max-w-xl drop-shadow">
-                  Join thousands of students preparing for Board Exams, JEE, NEET, and Competitive Exams with India's best learning platform.
-                </p>
+               
 
                 <div className="pt-2">
                   <button
@@ -494,9 +489,7 @@ export default function LoginPage({ onStudentLogin, onAdminLogin }: LoginPagePro
       </div>
 
       {/* Footer */}
-      <footer className="w-full text-center py-4 text-xs text-gray-500 bg-white border-t border-gray-200/80">
-        &copy; {new Date().getFullYear()} Suraj Sir Education • Roj Study. All rights reserved.
-      </footer>
+      <Footer />
     </div>
   );
 }
