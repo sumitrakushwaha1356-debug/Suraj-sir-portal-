@@ -25,6 +25,8 @@ import VideosTab from "./dashboard/VideosTab";
 import BooksTab from "./dashboard/BooksTab";
 import TestsTab from "./dashboard/TestsTab";
 import ProfileTab from "./dashboard/ProfileTab";
+import Class12BatchSection from "./Class12BatchSection";
+import Class10BatchSection from "./Class10BatchSection";
 import { getStudentProfile, createOrUpdateStudentProfileOnLogin, updateStudentProfile } from "../lib/firebase";
 
 interface StudentDashboardProps {
@@ -93,7 +95,9 @@ export default function StudentDashboard({ email, onLogout, onGoHome }: StudentD
 
   const navItems = [
     { id: "home", label: "Home Base", icon: Home, badge: null },
-    { id: "videos", label: "Video Batches", icon: Video, badge: "New" },
+    { id: "class10batch", label: "Class 10th Free Batch", icon: BookOpenCheck, badge: "Free" },
+    { id: "class12batch", label: "Class 12th Batch (2026-27)", icon: GraduationCap, badge: "New" },
+    { id: "videos", label: "Video Batches", icon: Video, badge: "Live" },
     { id: "books", label: "Reference Books", icon: BookOpen, badge: null },
     { id: "tests", label: "Mock Tests", icon: Award, badge: "Active" },
     { id: "profile", label: "My Profile", icon: User, badge: null },
@@ -109,6 +113,10 @@ export default function StudentDashboard({ email, onLogout, onGoHome }: StudentD
     switch (activeTab) {
       case "home":
         return <HomeTab profile={profile} onNavigateToTab={(tab) => setActiveTab(tab)} />;
+      case "class10batch":
+        return <Class10BatchSection onGoHome={() => setActiveTab("home")} />;
+      case "class12batch":
+        return <Class12BatchSection onGoHome={() => setActiveTab("home")} />;
       case "videos":
         return <VideosTab email={profile.email} onGoHome={onGoHome} />;
       case "books":

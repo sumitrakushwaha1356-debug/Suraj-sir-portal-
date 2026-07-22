@@ -25,6 +25,8 @@ import {
 import { Playlist, Video, PaymentRequest } from "../../types";
 import { getPlaylists, getPaymentRequests, createPaymentRequest, db, getPurchases } from "../../lib/firebase";
 import { onSnapshot, collection } from "firebase/firestore";
+import Class12BatchSection from "../Class12BatchSection";
+import Class10BatchSection from "../Class10BatchSection";
 
 const getYoutubeVideoId = (vid: Video | string): string => {
   const input = typeof vid === "string" ? vid : (vid.embedCode || vid.videoUrl || "");
@@ -127,6 +129,8 @@ export default function VideosTab({ email, onGoHome }: VideosTabProps) {
   const [purchasing, setPurchasing] = useState(false);
   
   // Navigation states
+  const [viewClass10BatchSection, setViewClass10BatchSection] = useState(false);
+  const [viewClass12BatchSection, setViewClass12BatchSection] = useState(false);
   const [selectedPlaylist, setSelectedPlaylist] = useState<(Playlist & { locked?: boolean }) | null>(null);
   const [selectedSubject, setSelectedSubject] = useState<"Science" | "Mathematics" | null>(null);
   const [currentVideo, setCurrentVideo] = useState<Video | null>(null);
@@ -417,6 +421,16 @@ export default function VideosTab({ email, onGoHome }: VideosTabProps) {
       setPaymentSubmitting(false);
     }
   };
+
+  // Dedicated Class 10th Batch (2026-27) Section
+  if (viewClass10BatchSection) {
+    return <Class10BatchSection onGoHome={() => setViewClass10BatchSection(false)} />;
+  }
+
+  // Dedicated Class 12th Batch (2026-27) Section
+  if (viewClass12BatchSection) {
+    return <Class12BatchSection onGoHome={() => setViewClass12BatchSection(false)} />;
+  }
 
   // UPI QR Code Payment Flow Screen
   if (showPaymentFlow) {
@@ -1236,6 +1250,57 @@ export default function VideosTab({ email, onGoHome }: VideosTabProps) {
   // 6. DEFAULT: PLAYLISTS GRID INDEX
   return (
     <div className="space-y-6">
+
+      {/* Featured Banner for Class 10th Free Batch (2026-27) */}
+      <div className="bg-gradient-to-r from-sky-950 via-slate-900 to-blue-950 rounded-3xl p-6 text-white shadow-md flex flex-col md:flex-row md:items-center justify-between gap-4 border border-white/10">
+        <div className="space-y-1">
+          <div className="flex items-center gap-2">
+            <span className="px-3 py-1 bg-sky-400 text-slate-950 text-[10px] font-black rounded-full uppercase tracking-wider">
+              ACADEMIC SESSION 2026-27
+            </span>
+            <span className="text-xs text-sky-300 font-bold flex items-center gap-1">
+              <Sparkles className="w-3.5 h-3.5" /> 100% Free Batch
+            </span>
+          </div>
+          <h3 className="text-xl font-extrabold text-white">📘 Class 10th Free Batch (2026-27)</h3>
+          <p className="text-xs text-slate-300 max-w-xl">
+            Complete Science, Maths, Social Science & English video lectures, Bootstrap carousel player, sidebar playlist & prev/next controls.
+          </p>
+        </div>
+        <button
+          onClick={() => setViewClass10BatchSection(true)}
+          className="py-3 px-6 bg-sky-400 hover:bg-sky-300 text-slate-950 font-black rounded-2xl text-xs shadow-lg transition active:scale-95 shrink-0 flex items-center justify-center gap-2 cursor-pointer"
+        >
+          <Play className="w-4 h-4 fill-current text-slate-950" />
+          <span>Open Class 10th Batch</span>
+        </button>
+      </div>
+
+      {/* Featured Banner for Class 12th Batch (2026-27) */}
+      <div className="bg-gradient-to-r from-navy-950 via-slate-900 to-indigo-950 rounded-3xl p-6 text-white shadow-md flex flex-col md:flex-row md:items-center justify-between gap-4 border border-white/10">
+        <div className="space-y-1">
+          <div className="flex items-center gap-2">
+            <span className="px-3 py-1 bg-amber-400 text-slate-950 text-[10px] font-black rounded-full uppercase tracking-wider">
+              ACADEMIC SESSION 2026-27
+            </span>
+            <span className="text-xs text-amber-300 font-bold flex items-center gap-1">
+              <Sparkles className="w-3.5 h-3.5" /> Bootstrap 5 Player Section
+            </span>
+          </div>
+          <h3 className="text-xl font-extrabold text-white">📚 Class 12th Batch (2026-27)</h3>
+          <p className="text-xs text-slate-300 max-w-xl">
+            Complete Bootstrap 5 section featuring sidebar lecture list group (30%), carousel slider, 16:9 HD video iframe player, and prev/next controls.
+          </p>
+        </div>
+        <button
+          onClick={() => setViewClass12BatchSection(true)}
+          className="py-3 px-6 bg-amber-400 hover:bg-amber-300 text-navy-950 font-black rounded-2xl text-xs shadow-lg transition active:scale-95 shrink-0 flex items-center justify-center gap-2 cursor-pointer"
+        >
+          <Play className="w-4 h-4 fill-current text-navy-950" />
+          <span>Open Class 12th Batch</span>
+        </button>
+      </div>
+
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <h2 className="font-display text-xl sm:text-2xl font-extrabold text-navy-950">
